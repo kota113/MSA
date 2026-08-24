@@ -6,7 +6,6 @@ final class AndroidView: NSView {
     private let display: H264Display
     private let androidWidth: CGFloat
     private let androidHeight: CGFloat
-    private var previousMouse: NSPoint?
 
     init(frame: NSRect, connection: SocketConnection, display: H264Display,
          androidWidth: Int, androidHeight: Int) {
@@ -16,20 +15,36 @@ final class AndroidView: NSView {
         self.androidHeight = CGFloat(androidHeight)
         super.init(frame: frame)
         wantsLayer = true
+        display.layer.frame = bounds
+        display.layer.autoresizingMask = [.layerWidthSizable, .layerHeightSizable]
         layer?.addSublayer(display.layer)
-        addTrackingArea(NSTrackingArea(rect: bounds,
-                                      options: [.activeAlways, .mouseMoved, .inVisibleRect],
-                                      owner: self))
     }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
     override var acceptsFirstResponder: Bool { true }
-    override func layout() { super.layout(); display.layer.frame = bounds }
+    override func layout() {
+        super.layout()
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        display.layer.frame = bounds
+        CATransaction.commit()
+    }
+
+    private var videoRect: NSRect {
+        let scale = min(bounds.width / androidWidth, bounds.height / androidHeight)
+        let size = NSSize(width: androidWidth * scale, height: androidHeight * scale)
+        return NSRect(x: (bounds.width - size.width) / 2,
+                      y: (bounds.height - size.height) / 2,
+                      width: size.width, height: size.height)
+    }
 
     private func point(_ event: NSEvent) -> (CGFloat, CGFloat) {
         let local = convert(event.locationInWindow, from: nil)
-        let x = max(0, min(androidWidth - 1, local.x / max(bounds.width, 1) * androidWidth))
-        let y = max(0, min(androidHeight - 1, (bounds.height - local.y) / max(bounds.height, 1) * androidHeight))
+        let image = videoRect
+        let x = max(0, min(androidWidth - 1,
+                           (local.x - image.minX) / max(image.width, 1) * androidWidth))
+        let y = max(0, min(androidHeight - 1,
+                           (image.maxY - local.y) / max(image.height, 1) * androidHeight))
         return (x, y)
     }
 
@@ -43,15 +58,6 @@ final class AndroidView: NSView {
 
     override func rightMouseDown(with event: NSEvent) { connection.sendLine("MOUSE_BUTTON 11 2") }
     override func rightMouseUp(with event: NSEvent) { connection.sendLine("MOUSE_BUTTON 12 2") }
-    override func mouseMoved(with event: NSEvent) { sendMouseMove(event) }
-    override func rightMouseDragged(with event: NSEvent) { sendMouseMove(event) }
-    private func sendMouseMove(_ event: NSEvent) {
-        let current = convert(event.locationInWindow, from: nil)
-        if let previousMouse {
-            connection.sendLine("MOUSE_MOVE \(current.x - previousMouse.x) \(previousMouse.y - current.y)")
-        }
-        previousMouse = current
-    }
     override func scrollWheel(with event: NSEvent) {
         connection.sendLine("SCROLL \(event.scrollingDeltaX / 10) \(-event.scrollingDeltaY / 10)")
     }

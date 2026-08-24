@@ -18,7 +18,7 @@ Input travels in the opposite direction as newline-delimited commands. Numeric a
 Android constants (`DOWN=0`, `UP=1`, `MOVE=2`, mouse press `11`, mouse release `12`).
 
     TOUCH <action> <x> <y> <pointerId>
-    MOUSE_MOVE <dx> <dy>
+    MOUSE_MOVE <dx> <dy>  # agent supports this; macOS host intentionally sends no hover movement
     MOUSE_BUTTON <action> <button>
     SCROLL <horizontal> <vertical>
     KEY <action> <androidKeyCode>

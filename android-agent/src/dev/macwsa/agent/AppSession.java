@@ -57,6 +57,7 @@ final class AppSession implements AutoCloseable {
                 .setLockState(VirtualDeviceParams.LOCK_STATE_ALWAYS_UNLOCKED)
                 .build();
         device = vdm.createVirtualDevice(associationId, params);
+        device.setShowPointerIcon(false);
 
         VirtualDisplayConfig displayConfig = new VirtualDisplayConfig.Builder(
                 "MacWSA:" + config.packageName, config.width, config.height, config.densityDpi)

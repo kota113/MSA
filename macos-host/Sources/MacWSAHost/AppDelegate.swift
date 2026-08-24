@@ -18,10 +18,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let view = AndroidView(frame: NSRect(x: 0, y: 0, width: 432, height: 768),
                                    connection: connection, display: display,
                                    androidWidth: arguments.width, androidHeight: arguments.height)
+            view.autoresizingMask = [.width, .height]
             let window = NSWindow(contentRect: view.frame,
                                   styleMask: [.titled, .closable, .miniaturizable, .resizable],
                                   backing: .buffered, defer: false)
             window.title = arguments.packageName
+            window.contentMinSize = NSSize(width: 216, height: 384)
             window.contentView = view
             window.makeKeyAndOrderFront(nil)
             window.makeFirstResponder(view)
