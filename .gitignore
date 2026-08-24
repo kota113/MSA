@@ -1,0 +1,9 @@
+.DS_Store
+.build/
+work/
+outputs/
+*.iml
+android-agent/.gradle/
+android-agent/build/
+android-agent/system-stubs/
+android-agent/test-keys/
