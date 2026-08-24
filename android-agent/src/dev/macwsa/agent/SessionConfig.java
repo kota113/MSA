@@ -31,7 +31,7 @@ final class SessionConfig {
         return new SessionConfig(p[1], width, height, density, bitrate);
     }
 
-    SessionConfig withDimensions(int width, int height) {
+    SessionConfig withDisplay(int width, int height, int densityDpi) {
         return new SessionConfig(packageName, width, height, densityDpi, bitrate);
     }
 }

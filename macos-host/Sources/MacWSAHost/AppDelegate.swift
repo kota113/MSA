@@ -17,7 +17,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let display = H264Display()
             let view = AndroidView(frame: NSRect(x: 0, y: 0, width: 432, height: 768),
                                    connection: connection, display: display,
-                                   androidWidth: arguments.width, androidHeight: arguments.height)
+                                   androidWidth: arguments.width, androidHeight: arguments.height,
+                                   densityDpi: arguments.density)
             view.autoresizingMask = [.width, .height]
             let window = NSWindow(contentRect: view.frame,
                                   styleMask: [.titled, .closable, .miniaturizable, .resizable],

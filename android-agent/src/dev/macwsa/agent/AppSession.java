@@ -38,12 +38,18 @@ final class AppSession implements AutoCloseable {
     private VirtualTouchscreen touchscreen;
     private VirtualMouse mouse;
     private VirtualKeyboard keyboard;
+    private int currentWidth;
+    private int currentHeight;
+    private int currentDensityDpi;
 
     AppSession(Context context, SessionConfig config, OutputStream output) throws Exception {
         this.context = context;
         this.config = config;
         this.output = output;
         this.encoder = new H264Encoder(config, output);
+        this.currentWidth = config.width;
+        this.currentHeight = config.height;
+        this.currentDensityDpi = config.densityDpi;
     }
 
     void start() throws Exception {
@@ -108,7 +114,8 @@ final class AppSession implements AutoCloseable {
             case "KEY" -> keyboard.sendKeyEvent(new VirtualKeyEvent.Builder()
                     .setAction(Integer.parseInt(p[1])).setKeyCode(Integer.parseInt(p[2]))
                     .setEventTimeNanos(now()).build());
-            case "RESIZE" -> resize(Integer.parseInt(p[1]), Integer.parseInt(p[2]));
+            case "RESIZE" -> resize(Integer.parseInt(p[1]), Integer.parseInt(p[2]),
+                    Integer.parseInt(p[3]));
             case "LAUNCH" -> launch(p[1], display.getDisplay().getDisplayId());
             default -> throw new IllegalArgumentException("Unknown input command: " + p[0]);
         }
@@ -125,24 +132,29 @@ final class AppSession implements AutoCloseable {
                 .setEventTimeNanos(now()).build());
     }
 
-    private void resize(int width, int height) throws Exception {
-        if (width < 64 || height < 64 || width > 4096 || height > 4096) {
-            throw new IllegalArgumentException("Resize dimensions must be in [64, 4096]");
+    private void resize(int width, int height, int densityDpi) throws Exception {
+        if (width < 64 || height < 64 || width > 4096 || height > 4096
+                || densityDpi < 72 || densityDpi > 640) {
+            throw new IllegalArgumentException("Invalid resize dimensions or density");
         }
-        if (display.getDisplay().getMode().getPhysicalWidth() == width
-                && display.getDisplay().getMode().getPhysicalHeight() == height) return;
+        if (currentWidth == width && currentHeight == height
+                && currentDensityDpi == densityDpi) return;
 
-        H264Encoder replacement = new H264Encoder(config.withDimensions(width, height), output);
+        H264Encoder replacement = new H264Encoder(
+                config.withDisplay(width, height, densityDpi), output);
         int displayId = display.getDisplay().getDisplayId();
         touchscreen.close();
         touchscreen = null;
         display.setSurface(null);
         encoder.close();
-        display.resize(width, height, config.densityDpi);
+        display.resize(width, height, densityDpi);
         display.setSurface(replacement.surface());
         encoder = replacement;
         createTouchscreen(width, height, displayId);
         encoder.start(false);
+        currentWidth = width;
+        currentHeight = height;
+        currentDensityDpi = densityDpi;
     }
 
     private void createTouchscreen(int width, int height, int displayId) {

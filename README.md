@@ -22,7 +22,7 @@ Android Emulator (unmodified AOSP framework) │
 - `ActivityOptions.setLaunchDisplayId()`による対象Activityの起動
 - VirtualTouchscreen/VirtualMouse/VirtualKeyboardへのmacOS入力注入
 - MediaCodecによるH.264転送とAppKit上での描画
-- NSWindowの縦横比に合わせたVirtualDisplay・encoder・touchscreenの動的リサイズ
+- NSWindowの縦横比と表示サイズに合わせたVirtualDisplay・density・encoder・touchscreenの動的リサイズ
 - 1接続 = 1 VirtualDevice = 1 NSWindow
 - Companion Device app-streaming associationとroleの自動設定
 

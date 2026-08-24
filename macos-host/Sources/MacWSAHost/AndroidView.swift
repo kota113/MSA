@@ -6,16 +6,24 @@ final class AndroidView: NSView {
     private let display: H264Display
     private var androidWidth: CGFloat
     private var androidHeight: CGFloat
+    private var androidDensityDpi: Int
+    private let initialAndroidWidth: CGFloat
+    private let initialViewWidth: CGFloat
+    private let initialDensityDpi: CGFloat
     private let initialPixelArea: CGFloat
     private var resizeWorkItem: DispatchWorkItem?
     private var acceptsResizeEvents = false
 
     init(frame: NSRect, connection: SocketConnection, display: H264Display,
-         androidWidth: Int, androidHeight: Int) {
+         androidWidth: Int, androidHeight: Int, densityDpi: Int) {
         self.connection = connection
         self.display = display
         self.androidWidth = CGFloat(androidWidth)
         self.androidHeight = CGFloat(androidHeight)
+        self.androidDensityDpi = densityDpi
+        self.initialAndroidWidth = CGFloat(androidWidth)
+        self.initialViewWidth = frame.width
+        self.initialDensityDpi = CGFloat(densityDpi)
         self.initialPixelArea = CGFloat(androidWidth * androidHeight)
         super.init(frame: frame)
         wantsLayer = true
@@ -73,13 +81,19 @@ final class AndroidView: NSView {
         }
         let targetWidth = max(64, Int(width) & ~1)
         let targetHeight = max(64, Int(height) & ~1)
+        let pixelScale = CGFloat(targetWidth) / initialAndroidWidth
+        let pointScale = bounds.width / initialViewWidth
+        let targetDensity = max(160, min(640,
+            Int((initialDensityDpi * pixelScale / pointScale).rounded())))
         guard abs(CGFloat(targetWidth) - androidWidth) >= 8
-                || abs(CGFloat(targetHeight) - androidHeight) >= 8 else { return }
+                || abs(CGFloat(targetHeight) - androidHeight) >= 8
+                || abs(targetDensity - androidDensityDpi) >= 2 else { return }
 
         androidWidth = CGFloat(targetWidth)
         androidHeight = CGFloat(targetHeight)
+        androidDensityDpi = targetDensity
         display.prepareForStreamResize()
-        connection.sendLine("RESIZE \(targetWidth) \(targetHeight)")
+        connection.sendLine("RESIZE \(targetWidth) \(targetHeight) \(targetDensity)")
     }
 
     private var videoRect: NSRect {
