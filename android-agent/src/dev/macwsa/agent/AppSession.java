@@ -31,7 +31,8 @@ import java.util.List;
 final class AppSession implements AutoCloseable {
     private final Context context;
     private final SessionConfig config;
-    private final H264Encoder encoder;
+    private final OutputStream output;
+    private H264Encoder encoder;
     private VirtualDevice device;
     private VirtualDisplay display;
     private VirtualTouchscreen touchscreen;
@@ -41,6 +42,7 @@ final class AppSession implements AutoCloseable {
     AppSession(Context context, SessionConfig config, OutputStream output) throws Exception {
         this.context = context;
         this.config = config;
+        this.output = output;
         this.encoder = new H264Encoder(config, output);
     }
 
@@ -70,10 +72,7 @@ final class AppSession implements AutoCloseable {
         if (display == null) throw new IllegalStateException("Virtual display creation failed");
         int displayId = display.getDisplay().getDisplayId();
 
-        touchscreen = device.createVirtualTouchscreen(new VirtualTouchscreenConfig.Builder(
-                config.width, config.height)
-                .setAssociatedDisplayId(displayId).setInputDeviceName("MacWSA Touch")
-                .setVendorId(0x18d1).setProductId(0x4ee7).build());
+        createTouchscreen(config.width, config.height, displayId);
         mouse = device.createVirtualMouse(new VirtualMouseConfig.Builder()
                 .setAssociatedDisplayId(displayId).setInputDeviceName("MacWSA Mouse")
                 .setVendorId(0x18d1).setProductId(0x4ee8).build());
@@ -81,7 +80,7 @@ final class AppSession implements AutoCloseable {
                 .setAssociatedDisplayId(displayId).setInputDeviceName("MacWSA Keyboard")
                 .setVendorId(0x18d1).setProductId(0x4ee9).build());
 
-        encoder.start();
+        encoder.start(true);
         launch(config.packageName, displayId);
     }
 
@@ -94,7 +93,7 @@ final class AppSession implements AutoCloseable {
         context.startActivity(intent, options.toBundle());
     }
 
-    void handleInput(String line) {
+    void handleInput(String line) throws Exception {
         String[] p = line.trim().split("\\s+");
         if (p.length == 0) return;
         switch (p[0]) {
@@ -109,6 +108,7 @@ final class AppSession implements AutoCloseable {
             case "KEY" -> keyboard.sendKeyEvent(new VirtualKeyEvent.Builder()
                     .setAction(Integer.parseInt(p[1])).setKeyCode(Integer.parseInt(p[2]))
                     .setEventTimeNanos(now()).build());
+            case "RESIZE" -> resize(Integer.parseInt(p[1]), Integer.parseInt(p[2]));
             case "LAUNCH" -> launch(p[1], display.getDisplay().getDisplayId());
             default -> throw new IllegalArgumentException("Unknown input command: " + p[0]);
         }
@@ -123,6 +123,32 @@ final class AppSession implements AutoCloseable {
                 .setX(Float.parseFloat(p[2])).setY(Float.parseFloat(p[3]))
                 .setPressure(action == VirtualTouchEvent.ACTION_UP ? 0f : 1f)
                 .setEventTimeNanos(now()).build());
+    }
+
+    private void resize(int width, int height) throws Exception {
+        if (width < 64 || height < 64 || width > 4096 || height > 4096) {
+            throw new IllegalArgumentException("Resize dimensions must be in [64, 4096]");
+        }
+        if (display.getDisplay().getMode().getPhysicalWidth() == width
+                && display.getDisplay().getMode().getPhysicalHeight() == height) return;
+
+        H264Encoder replacement = new H264Encoder(config.withDimensions(width, height), output);
+        int displayId = display.getDisplay().getDisplayId();
+        touchscreen.close();
+        touchscreen = null;
+        display.setSurface(null);
+        encoder.close();
+        display.resize(width, height, config.densityDpi);
+        display.setSurface(replacement.surface());
+        encoder = replacement;
+        createTouchscreen(width, height, displayId);
+        encoder.start(false);
+    }
+
+    private void createTouchscreen(int width, int height, int displayId) {
+        touchscreen = device.createVirtualTouchscreen(new VirtualTouchscreenConfig.Builder(width, height)
+                .setAssociatedDisplayId(displayId).setInputDeviceName("MacWSA Touch")
+                .setVendorId(0x18d1).setProductId(0x4ee7).build());
     }
 
     private void sendScroll(String[] p) {
@@ -147,6 +173,6 @@ final class AppSession implements AutoCloseable {
         if (touchscreen != null) touchscreen.close();
         if (display != null) display.release();
         if (device != null) device.close();
-        encoder.close();
+        if (encoder != null) encoder.close();
     }
 }

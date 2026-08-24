@@ -4,8 +4,11 @@ import AppKit
 final class AndroidView: NSView {
     private let connection: SocketConnection
     private let display: H264Display
-    private let androidWidth: CGFloat
-    private let androidHeight: CGFloat
+    private var androidWidth: CGFloat
+    private var androidHeight: CGFloat
+    private let initialPixelArea: CGFloat
+    private var resizeWorkItem: DispatchWorkItem?
+    private var acceptsResizeEvents = false
 
     init(frame: NSRect, connection: SocketConnection, display: H264Display,
          androidWidth: Int, androidHeight: Int) {
@@ -13,6 +16,7 @@ final class AndroidView: NSView {
         self.display = display
         self.androidWidth = CGFloat(androidWidth)
         self.androidHeight = CGFloat(androidHeight)
+        self.initialPixelArea = CGFloat(androidWidth * androidHeight)
         super.init(frame: frame)
         wantsLayer = true
         layerContentsRedrawPolicy = .duringViewResize
@@ -20,6 +24,7 @@ final class AndroidView: NSView {
         display.layer.needsDisplayOnBoundsChange = true
         layer?.addSublayer(display.layer)
         updateDisplayLayerFrame()
+        acceptsResizeEvents = true
     }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
@@ -28,6 +33,7 @@ final class AndroidView: NSView {
         super.setFrameSize(newSize)
         updateDisplayLayerFrame()
         needsDisplay = true
+        scheduleAndroidResize()
     }
 
     override func layout() {
@@ -40,6 +46,40 @@ final class AndroidView: NSView {
         CATransaction.setDisableActions(true)
         display.layer.frame = bounds
         CATransaction.commit()
+    }
+
+    override func viewDidEndLiveResize() {
+        super.viewDidEndLiveResize()
+        scheduleAndroidResize(delay: 0)
+    }
+
+    private func scheduleAndroidResize(delay: TimeInterval = 0.25) {
+        guard acceptsResizeEvents, bounds.width >= 64, bounds.height >= 64 else { return }
+        resizeWorkItem?.cancel()
+        let work = DispatchWorkItem { [weak self] in self?.sendAndroidResize() }
+        resizeWorkItem = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
+    }
+
+    private func sendAndroidResize() {
+        let aspect = bounds.width / bounds.height
+        var width = sqrt(initialPixelArea * aspect)
+        var height = sqrt(initialPixelArea / aspect)
+        let longest = max(width, height)
+        if longest > 1920 {
+            let scale = 1920 / longest
+            width *= scale
+            height *= scale
+        }
+        let targetWidth = max(64, Int(width) & ~1)
+        let targetHeight = max(64, Int(height) & ~1)
+        guard abs(CGFloat(targetWidth) - androidWidth) >= 8
+                || abs(CGFloat(targetHeight) - androidHeight) >= 8 else { return }
+
+        androidWidth = CGFloat(targetWidth)
+        androidHeight = CGFloat(targetHeight)
+        display.prepareForStreamResize()
+        connection.sendLine("RESIZE \(targetWidth) \(targetHeight)")
     }
 
     private var videoRect: NSRect {

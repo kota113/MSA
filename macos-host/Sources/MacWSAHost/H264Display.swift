@@ -14,6 +14,13 @@ final class H264Display {
         layer.backgroundColor = CGColor(gray: 0.08, alpha: 1)
     }
 
+    func prepareForStreamResize() {
+        sps = nil
+        pps = nil
+        format = nil
+        layer.flush()
+    }
+
     func consume(payload: Data, ptsMicroseconds: UInt64, isKeyFrame: Bool) {
         let units = NALUnits.split(payload)
         for unit in units {

@@ -36,9 +36,11 @@ final class H264Encoder implements AutoCloseable {
 
     Surface surface() { return inputSurface; }
 
-    void start() throws IOException {
-        output.write("MWSA1\n".getBytes(java.nio.charset.StandardCharsets.US_ASCII));
-        output.flush();
+    void start(boolean sendStreamHeader) throws IOException {
+        if (sendStreamHeader) {
+            output.write("MWSA1\n".getBytes(java.nio.charset.StandardCharsets.US_ASCII));
+            output.flush();
+        }
         codec.start();
         running = true;
         drainThread = new Thread(this::drain, "macwsa-h264");
@@ -99,6 +101,11 @@ final class H264Encoder implements AutoCloseable {
         running = false;
         if (drainThread != null) drainThread.interrupt();
         try { codec.stop(); } catch (Exception ignored) {}
+        if (drainThread != null) {
+            try { drainThread.join(1_000); } catch (InterruptedException ignored) {
+                Thread.currentThread().interrupt();
+            }
+        }
         codec.release();
         inputSurface.release();
     }

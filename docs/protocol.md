@@ -22,6 +22,7 @@ Android constants (`DOWN=0`, `UP=1`, `MOVE=2`, mouse press `11`, mouse release `
     MOUSE_BUTTON <action> <button>
     SCROLL <horizontal> <vertical>
     KEY <action> <androidKeyCode>
+    RESIZE <width> <height>
     LAUNCH <package>
 
 The transport intentionally has no authentication. Keep it behind `adb forward`; it is a PoC,
