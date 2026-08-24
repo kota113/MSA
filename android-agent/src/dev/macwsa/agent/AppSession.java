@@ -105,9 +105,7 @@ final class AppSession implements AutoCloseable {
             case "MOUSE_BUTTON" -> mouse.sendButtonEvent(new VirtualMouseButtonEvent.Builder()
                     .setAction(Integer.parseInt(p[1])).setButtonCode(Integer.parseInt(p[2]))
                     .setEventTimeNanos(now()).build());
-            case "SCROLL" -> mouse.sendScrollEvent(new VirtualMouseScrollEvent.Builder()
-                    .setXAxisMovement(Float.parseFloat(p[1]))
-                    .setYAxisMovement(Float.parseFloat(p[2])).setEventTimeNanos(now()).build());
+            case "SCROLL" -> sendScroll(p);
             case "KEY" -> keyboard.sendKeyEvent(new VirtualKeyEvent.Builder()
                     .setAction(Integer.parseInt(p[1])).setKeyCode(Integer.parseInt(p[2]))
                     .setEventTimeNanos(now()).build());
@@ -125,6 +123,19 @@ final class AppSession implements AutoCloseable {
                 .setX(Float.parseFloat(p[2])).setY(Float.parseFloat(p[3]))
                 .setPressure(action == VirtualTouchEvent.ACTION_UP ? 0f : 1f)
                 .setEventTimeNanos(now()).build());
+    }
+
+    private void sendScroll(String[] p) {
+        float x = clampScroll(Float.parseFloat(p[1]));
+        float y = clampScroll(Float.parseFloat(p[2]));
+        if (x == 0f && y == 0f) return;
+        mouse.sendScrollEvent(new VirtualMouseScrollEvent.Builder()
+                .setXAxisMovement(x).setYAxisMovement(y)
+                .setEventTimeNanos(now()).build());
+    }
+
+    private static float clampScroll(float value) {
+        return Math.max(-1f, Math.min(1f, value));
     }
 
     private static long now() { return SystemClock.uptimeMillis() * 1_000_000L; }

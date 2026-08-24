@@ -53,7 +53,13 @@ final class AgentServer implements AutoCloseable {
             try (AppSession session = new AppSession(context, config, socket.getOutputStream())) {
                 session.start();
                 String line;
-                while ((line = reader.readLine()) != null) session.handleInput(line);
+                while ((line = reader.readLine()) != null) {
+                    try {
+                        session.handleInput(line);
+                    } catch (IllegalArgumentException e) {
+                        Log.w(TAG, "Ignoring invalid input event: " + line, e);
+                    }
+                }
             }
         } catch (Exception e) {
             Log.e(TAG, "Client session failed", e);

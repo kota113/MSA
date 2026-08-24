@@ -15,15 +15,27 @@ final class AndroidView: NSView {
         self.androidHeight = CGFloat(androidHeight)
         super.init(frame: frame)
         wantsLayer = true
-        display.layer.frame = bounds
+        layerContentsRedrawPolicy = .duringViewResize
         display.layer.autoresizingMask = [.layerWidthSizable, .layerHeightSizable]
+        display.layer.needsDisplayOnBoundsChange = true
         layer?.addSublayer(display.layer)
+        updateDisplayLayerFrame()
     }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
     override var acceptsFirstResponder: Bool { true }
+    override func setFrameSize(_ newSize: NSSize) {
+        super.setFrameSize(newSize)
+        updateDisplayLayerFrame()
+        needsDisplay = true
+    }
+
     override func layout() {
         super.layout()
+        updateDisplayLayerFrame()
+    }
+
+    private func updateDisplayLayerFrame() {
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         display.layer.frame = bounds
@@ -59,7 +71,14 @@ final class AndroidView: NSView {
     override func rightMouseDown(with event: NSEvent) { connection.sendLine("MOUSE_BUTTON 11 2") }
     override func rightMouseUp(with event: NSEvent) { connection.sendLine("MOUSE_BUTTON 12 2") }
     override func scrollWheel(with event: NSEvent) {
-        connection.sendLine("SCROLL \(event.scrollingDeltaX / 10) \(-event.scrollingDeltaY / 10)")
+        let x = normalizedScroll(event.scrollingDeltaX)
+        let y = normalizedScroll(-event.scrollingDeltaY)
+        guard x != 0 || y != 0 else { return }
+        connection.sendLine("SCROLL \(x) \(y)")
+    }
+
+    private func normalizedScroll(_ delta: CGFloat) -> CGFloat {
+        max(-1, min(1, delta / 10))
     }
     override func keyDown(with event: NSEvent) {
         if let code = AndroidKeys[event.keyCode] { connection.sendLine("KEY 0 \(code)") }
