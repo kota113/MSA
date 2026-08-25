@@ -77,6 +77,12 @@ final class EmulatorManagerAppDelegate: NSObject, NSApplicationDelegate {
         stop.isEnabled = false
         menu.addItem(stop)
 
+        menu.addItem(.separator())
+        let quit = NSMenuItem(title: "Quit MSA Emulator", action: #selector(NSApplication.terminate(_:)),
+                              keyEquivalent: "q")
+        quit.target = NSApp
+        menu.addItem(quit)
+
         item.menu = menu
         statusItem = item
         statusTitleItem = title
