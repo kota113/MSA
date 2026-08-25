@@ -8,6 +8,7 @@
     <uses-permission android:name="android.permission.CREATE_VIRTUAL_DEVICE" />
     <uses-permission android:name="android.permission.ADD_ALWAYS_UNLOCKED_DISPLAY" />
     <uses-permission android:name="android.permission.ADD_TRUSTED_DISPLAY" />
+    <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />
 
     <application
         android:allowBackup="false"
@@ -29,5 +30,11 @@
                 <action android:name="android.intent.action.LOCKED_BOOT_COMPLETED" />
             </intent-filter>
         </receiver>
+        <provider
+            android:name=".IconProvider"
+            android:authorities="dev.macwsa.agent.icons"
+            android:directBootAware="true"
+            android:exported="true"
+            android:readPermission="android.permission.DUMP" />
     </application>
 </manifest>

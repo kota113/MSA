@@ -89,7 +89,7 @@ scripts/run-host.sh com.android.settings
 
 ## AndroidアプリをmacOSの.appとして追加
 
-Emulatorにインストール済みの任意のAndroidアプリから、FinderやSpotlightで起動できるmacOSアプリbundleを作れます。Android側の表示名をAPKから取得し、既定では`~/Applications`へ追加します。APKに直接格納された画像アイコンも取り込み、adaptive iconなどXML形式の場合はmacOSの汎用アプリアイコンを使います。
+Emulatorにインストール済みの任意のAndroidアプリから、FinderやSpotlightで起動できるmacOSアプリbundleを作れます。Android側の表示名をAPKから取得し、既定では`~/Applications`へ追加します。アイコンはAndroidの`PackageManager`でPNGへ描画してからmacOSの`.icns`へ変換するため、XML adaptive icon、vector drawable、通常の画像アイコンに対応します。
 
 ```sh
 cd ~/IdeaProjects/macwsa-poc
@@ -100,6 +100,12 @@ ANDROID_SERIAL=emulator-5558 scripts/create-macos-app.sh com.android.vending
 
 ```sh
 ANDROID_SERIAL=emulator-5558 scripts/create-macos-app.sh com.example.app "My Android App" "$HOME/Desktop"
+```
+
+作成済みのbundleを新しいホストやアイコンで更新する場合は`--replace`を付けます。
+
+```sh
+ANDROID_SERIAL=emulator-5558 scripts/create-macos-app.sh --replace com.android.vending
 ```
 
 生成された`.app`にはAndroid package名だけが設定として埋め込まれます。APKやGoogle Playのコードは同梱せず、共通のAndroid Emulatorとagentへ接続します。開く前にEmulatorとTCP forwardを起動してください。
