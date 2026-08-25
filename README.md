@@ -89,10 +89,9 @@ echo 'export PATH="$HOME/Library/Android/sdk/platform-tools:$PATH"' >> ~/.zshrc
 - `aosp/` — a fallback for building a full AOSP product later; not needed for normal use
 
 ## Disk usage
-
-None of this needs a 400 GB-class AOSP source/build tree. The bulk of the footprint is the
+The bulk of the footprint is the
 Android SDK's API 36 ARM64 system image, AVD data, and the Gradle cache — a few GB at first.
-In testing, setup started from 40 GB free and left about 36 GB free afterward.
+In testing, a setup consumed around 4GB.
 
 ## Initial setup
 
