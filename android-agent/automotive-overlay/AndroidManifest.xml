@@ -1,0 +1,9 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="dev.macwsa.overlay.automotiveprojection">
+    <uses-sdk android:minSdkVersion="36" android:targetSdkVersion="36" />
+    <application android:hasCode="false" />
+    <overlay
+        android:isStatic="true"
+        android:priority="999"
+        android:targetPackage="android" />
+</manifest>

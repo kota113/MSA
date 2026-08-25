@@ -8,6 +8,7 @@ import android.companion.virtual.VirtualDeviceManager.VirtualDevice;
 import android.companion.virtual.VirtualDeviceParams;
 import android.content.Context;
 import android.content.Intent;
+import android.content.pm.PackageManager;
 import android.hardware.display.DisplayManager;
 import android.hardware.display.VirtualDisplay;
 import android.hardware.display.VirtualDisplayConfig;
@@ -23,12 +24,14 @@ import android.hardware.input.VirtualTouchEvent;
 import android.hardware.input.VirtualTouchscreen;
 import android.hardware.input.VirtualTouchscreenConfig;
 import android.os.SystemClock;
+import android.util.Log;
 import android.view.KeyEvent;
 
 import java.io.OutputStream;
 import java.util.List;
 
 final class AppSession implements AutoCloseable {
+    private static final String TAG = "MacWsaAgent";
     private final Context context;
     private final SessionConfig config;
     private final OutputStream output;
@@ -67,12 +70,20 @@ final class AppSession implements AutoCloseable {
         device = vdm.createVirtualDevice(associationId, params);
         device.setShowPointerIcon(false);
 
+        int displayFlags = DisplayManager.VIRTUAL_DISPLAY_FLAG_PUBLIC
+                | DisplayManager.VIRTUAL_DISPLAY_FLAG_OWN_CONTENT_ONLY
+                | DisplayManager.VIRTUAL_DISPLAY_FLAG_TRUSTED;
+        if (context.checkSelfPermission("android.permission.CAPTURE_SECURE_VIDEO_OUTPUT")
+                == PackageManager.PERMISSION_GRANTED) {
+            displayFlags |= DisplayManager.VIRTUAL_DISPLAY_FLAG_SECURE;
+        } else {
+            Log.w(TAG, "Secure capture permission unavailable; using a non-secure display");
+        }
+
         VirtualDisplayConfig displayConfig = new VirtualDisplayConfig.Builder(
                 "MacWSA:" + config.packageName, config.width, config.height, config.densityDpi)
                 .setSurface(encoder.surface())
-                .setFlags(DisplayManager.VIRTUAL_DISPLAY_FLAG_PUBLIC
-                        | DisplayManager.VIRTUAL_DISPLAY_FLAG_OWN_CONTENT_ONLY
-                        | DisplayManager.VIRTUAL_DISPLAY_FLAG_TRUSTED)
+                .setFlags(displayFlags)
                 .build();
         display = device.createVirtualDisplay(displayConfig, null, null);
         if (display == null) throw new IllegalStateException("Virtual display creation failed");

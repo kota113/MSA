@@ -25,6 +25,7 @@ Android Emulator (unmodified AOSP framework) │
 - NSWindowの縦横比と表示サイズに合わせたVirtualDisplay・density・encoder・touchscreenの動的リサイズ
 - 1接続 = 1 VirtualDevice = 1 NSWindow
 - Companion Device app-streaming associationとroleの自動設定
+- secure VirtualDisplayによる`FLAG_SECURE`認証画面のローカル実験用転送
 
 音声、クリップボード、通知連携、IME変換、DRM保護映像は未実装です。
 
@@ -150,6 +151,17 @@ scripts/run-host.sh com.android.vending
 ```
 
 これはローカル実験専用です。Google Play image、GMS、Magisk、rootAVD、agent APKを成果物へ同梱・再配布しないでください。root化されたEmulatorではPlay Integrity、DRM、Walletなどが動作しない場合があります。
+
+agentはパスワード確認などの`FLAG_SECURE` WindowもmacOSへ表示できるよう、role権限`CAPTURE_SECURE_VIDEO_OUTPUT`とsecure VirtualDisplayを使用します。systemless RROによって`SYSTEM_AUTOMOTIVE_PROJECTION`のholderをAndroid Autoからagentへ変更するため、この実験中はEmulator内のAndroid Auto機能を使用できません。映像は認証のないlocalhost TCP上のH.264として転送されるため、信頼できないローカルプロセスが動く環境では使用しないでください。
+
+secure captureを無効化してAndroid Auto holderへ戻す場合と、再度有効化する場合は次を使います。どちらもEmulatorを再起動します。
+
+```sh
+ANDROID_SERIAL=emulator-5558 scripts/set-secure-capture.sh disable
+ANDROID_SERIAL=emulator-5558 scripts/set-secure-capture.sh enable
+```
+
+コードもsecure capture導入前へ完全に戻す場合は、まず上記`disable`を実行してからGitコミット`62be958`を使用します。
 
 ## 検証
 

@@ -14,8 +14,8 @@ android {
         applicationId = "dev.macwsa.agent"
         minSdk = 36
         targetSdk = 36
-        versionCode = 2
-        versionName = "0.2.0"
+        versionCode = 3
+        versionName = "0.3.0"
     }
 
     sourceSets {

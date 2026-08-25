@@ -9,6 +9,7 @@ MODULE="$ROOT/work/MacWsaAgent-magisk.zip"
 REMOTE_MODULE=/data/local/tmp/MacWsaAgent-magisk.zip
 PACKAGE=dev.macwsa.agent
 PROFILE=android.app.role.COMPANION_DEVICE_APP_STREAMING
+AUTOMOTIVE_ROLE=android.app.role.SYSTEM_AUTOMOTIVE_PROJECTION
 
 adb_cmd() {
   "$ADB" -s "$SERIAL" "$@"
@@ -55,6 +56,17 @@ if ! adb_cmd shell cmd role add-role-holder --user 0 "$PROFILE" "$PACKAGE" 0; th
   exit 1
 fi
 adb_cmd shell cmd role set-bypassing-role-qualification false
+
+# The static RRO makes the agent the qualified automotive projection holder.
+# Refreshing the holder causes RoleController to grant CAPTURE_SECURE_VIDEO_OUTPUT.
+if adb_cmd shell cmd role get-role-holders --user 0 "$AUTOMOTIVE_ROLE" | grep -q '^dev.macwsa.agent$'; then
+  adb_cmd shell cmd role remove-role-holder --user 0 "$AUTOMOTIVE_ROLE" "$PACKAGE" 0
+fi
+if adb_cmd shell cmd role get-role-holders --user 0 "$AUTOMOTIVE_ROLE" | grep -q '^com.google.android.projection.gearhead$'; then
+  adb_cmd shell cmd role remove-role-holder --user 0 "$AUTOMOTIVE_ROLE" \
+    com.google.android.projection.gearhead 0
+fi
+adb_cmd shell cmd role add-role-holder --user 0 "$AUTOMOTIVE_ROLE" "$PACKAGE" 0
 adb_cmd reboot
 wait_boot
 adb_cmd forward tcp:27183 tcp:27183
@@ -62,5 +74,5 @@ adb_cmd forward tcp:27183 tcp:27183
 adb_cmd shell pm path "$PACKAGE"
 adb_cmd shell cmd companiondevice list 0
 adb_cmd shell dumpsys package "$PACKAGE" | grep -E \
-  'CREATE_VIRTUAL_DEVICE|REQUEST_COMPANION_PROFILE_APP_STREAMING|ADD_TRUSTED_DISPLAY' || true
+  'CAPTURE_SECURE_VIDEO_OUTPUT|CREATE_VIRTUAL_DEVICE|REQUEST_COMPANION_PROFILE_APP_STREAMING|ADD_TRUSTED_DISPLAY' || true
 echo "MacWsaAgent Magisk module installation complete on $SERIAL."
