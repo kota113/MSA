@@ -7,4 +7,5 @@ exec "$SDK_ROOT/emulator/emulator" \
   -writable-system \
   -no-snapshot \
   -no-boot-anim \
+  -gpu host \
   "$@"

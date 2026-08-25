@@ -66,6 +66,8 @@ cd ~/IdeaProjects/macwsa-poc
 scripts/start-emulator.sh
 ```
 
+この起動スクリプトはApple Silicon MacのGPUを利用するため、Emulatorを`-gpu host`で起動します。映像ストリームは60fps設定のままです。
+
 別ターミナルで、起動完了後に一度だけ実行します。
 
 ```sh
