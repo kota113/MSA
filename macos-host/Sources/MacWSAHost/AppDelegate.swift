@@ -23,7 +23,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let window = NSWindow(contentRect: view.frame,
                                   styleMask: [.titled, .closable, .miniaturizable, .resizable],
                                   backing: .buffered, defer: false)
-            window.title = arguments.packageName
+            window.title = arguments.windowTitle
             window.contentMinSize = NSSize(width: 216, height: 384)
             window.contentView = view
             window.makeKeyAndOrderFront(nil)
@@ -46,7 +46,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     }
                 } catch {
                     await MainActor.run {
-                        self?.window?.title = "\(self?.arguments.packageName ?? "MacWSA") — disconnected"
+                        self?.window?.title = "\(self?.arguments.windowTitle ?? "MacWSA") — disconnected"
                     }
                 }
             }

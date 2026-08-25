@@ -87,6 +87,29 @@ scripts/run-host.sh com.android.settings
 
 インストール済みの別アプリはpackage名を置き換えます。2つ起動すれば、独立したVirtualDisplayとNSWindowが2つ作られます。
 
+## AndroidアプリをmacOSの.appとして追加
+
+Emulatorにインストール済みの任意のAndroidアプリから、FinderやSpotlightで起動できるmacOSアプリbundleを作れます。Android側の表示名をAPKから取得し、既定では`~/Applications`へ追加します。APKに直接格納された画像アイコンも取り込み、adaptive iconなどXML形式の場合はmacOSの汎用アプリアイコンを使います。
+
+```sh
+cd ~/IdeaProjects/macwsa-poc
+ANDROID_SERIAL=emulator-5558 scripts/create-macos-app.sh com.android.vending
+```
+
+表示名を指定する場合は第2引数、保存先を変える場合は第3引数を使います。
+
+```sh
+ANDROID_SERIAL=emulator-5558 scripts/create-macos-app.sh com.example.app "My Android App" "$HOME/Desktop"
+```
+
+生成された`.app`にはAndroid package名だけが設定として埋め込まれます。APKやGoogle Playのコードは同梱せず、共通のAndroid Emulatorとagentへ接続します。開く前にEmulatorとTCP forwardを起動してください。
+
+```sh
+scripts/start-gms-emulator.sh
+ANDROID_SERIAL=emulator-5558 scripts/forward.sh
+open "$HOME/Applications/Google Play Store.app"
+```
+
 ## Google Play実験用AVD（rootAVD）
 
 Google Play StoreとGMSを使う実験用構成は、通常のAOSP AVDとは別の`macwsa-gms-api36`として用意します。SDKのGoogle Play imageをAPFSのコピーオンライトで分離してからrootAVD/Magiskで専用ramdiskだけを変更するため、既存のPixel AVDと元のsystem imageには影響しません。
