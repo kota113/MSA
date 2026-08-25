@@ -1,4 +1,4 @@
-package dev.macwsa.agent;
+package dev.msa.agent;
 
 import android.app.Notification;
 import android.app.NotificationChannel;
@@ -9,8 +9,8 @@ import android.os.IBinder;
 import android.util.Log;
 
 public final class AgentService extends Service {
-    private static final String TAG = "MacWsaAgent";
-    private static final String CHANNEL = "macwsa-agent";
+    private static final String TAG = "MsaAgent";
+    private static final String CHANNEL = "msa-agent";
     private AgentServer server;
 
     @Override
@@ -18,10 +18,10 @@ public final class AgentService extends Service {
         super.onCreate();
         NotificationManager nm = getSystemService(NotificationManager.class);
         nm.createNotificationChannel(new NotificationChannel(
-                CHANNEL, "MacWSA agent", NotificationManager.IMPORTANCE_LOW));
+                CHANNEL, "MSA agent", NotificationManager.IMPORTANCE_LOW));
         Notification notification = new Notification.Builder(this, CHANNEL)
                 .setSmallIcon(android.R.drawable.stat_sys_upload)
-                .setContentTitle("MacWSA agent")
+                .setContentTitle("MSA agent")
                 .setContentText("Listening for macOS app windows")
                 .setOngoing(true)
                 .build();

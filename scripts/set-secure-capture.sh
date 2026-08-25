@@ -6,10 +6,10 @@ ADB=${ADB:-"$SDK_ROOT/platform-tools/adb"}
 SERIAL=${ANDROID_SERIAL:-emulator-5558}
 ACTION=${1:-}
 ROLE=android.app.role.SYSTEM_AUTOMOTIVE_PROJECTION
-AGENT=dev.macwsa.agent
+AGENT=dev.msa.agent
 ANDROID_AUTO=com.google.android.projection.gearhead
-MODULE_DIR=/data/adb/modules/macwsa_agent/system/product/overlay
-OVERLAY="$MODULE_DIR/MacWsaAutomotiveProjectionOverlay.apk"
+MODULE_DIR=/data/adb/modules/msa_agent/system/product/overlay
+OVERLAY="$MODULE_DIR/MsaAutomotiveProjectionOverlay.apk"
 DISABLED_OVERLAY="$OVERLAY.disabled"
 
 adb_cmd() {

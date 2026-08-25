@@ -14,7 +14,7 @@
     <application
         android:allowBackup="false"
         android:directBootAware="true"
-        android:label="MacWSA Agent"
+        android:label="MSA Agent"
         android:persistent="true"
         android:usesCleartextTraffic="true">
         <service
@@ -33,7 +33,7 @@
         </receiver>
         <provider
             android:name=".IconProvider"
-            android:authorities="dev.macwsa.agent.icons"
+            android:authorities="dev.msa.agent.icons"
             android:directBootAware="true"
             android:exported="true"
             android:readPermission="android.permission.DUMP" />

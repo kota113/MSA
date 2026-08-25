@@ -2,13 +2,13 @@
 import PackageDescription
 
 let package = Package(
-    name: "MacWSAHost",
+    name: "MSAHost",
     platforms: [.macOS(.v14)],
-    products: [.executable(name: "MacWSAHost", targets: ["MacWSAHost"])],
+    products: [.executable(name: "MSAHost", targets: ["MSAHost"])],
     targets: [
         .executableTarget(
-            name: "MacWSAHost",
-            path: "macos-host/Sources/MacWSAHost",
+            name: "MSAHost",
+            path: "macos-host/Sources/MSAHost",
             linkerSettings: [
                 .linkedFramework("AppKit"),
                 .linkedFramework("AVFoundation"),
@@ -17,9 +17,9 @@ let package = Package(
             ]
         ),
         .testTarget(
-            name: "MacWSAHostTests",
-            dependencies: ["MacWSAHost"],
-            path: "macos-host/Tests/MacWSAHostTests"
+            name: "MSAHostTests",
+            dependencies: ["MSAHost"],
+            path: "macos-host/Tests/MSAHostTests"
         ),
     ]
 )

@@ -5,6 +5,16 @@ ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 SDK_ROOT=${ANDROID_SDK_ROOT:-"$HOME/Library/Android/sdk"}
 ADB="$SDK_ROOT/platform-tools/adb"
 SERIAL=${ANDROID_SERIAL:-emulator-5558}
+case "$SERIAL" in
+  emulator-5558)
+    AVD_NAME=${MSA_AVD_NAME:-msa-gms-api36}
+    WRITABLE_SYSTEM=${MSA_WRITABLE_SYSTEM:-0}
+    ;;
+  *)
+    AVD_NAME=${MSA_AVD_NAME:-msa-api36}
+    WRITABLE_SYSTEM=${MSA_WRITABLE_SYSTEM:-1}
+    ;;
+esac
 REPLACE=0
 if [ "${1:-}" = "--replace" ]; then
   REPLACE=1
@@ -38,7 +48,7 @@ if [ -z "$APK_DEVICE_PATH" ]; then
   exit 1
 fi
 
-TEMP_DIR=$(mktemp -d "${TMPDIR:-/tmp}/macwsa-app.XXXXXX")
+TEMP_DIR=$(mktemp -d "${TMPDIR:-/tmp}/msa-app.XXXXXX")
 trap 'rm -rf "$TEMP_DIR"' EXIT HUP INT TERM
 APK="$TEMP_DIR/base.apk"
 "$ADB" -s "$SERIAL" pull "$APK_DEVICE_PATH" "$APK" >/dev/null
@@ -56,22 +66,21 @@ if [ -e "$APP" ] && [ "$REPLACE" -eq 0 ]; then
   exit 1
 fi
 
-if [ ! -x "$ROOT/work/.build/release/MacWSAHost" ]; then
-  "$ROOT/scripts/build-host.sh"
-fi
+"$ROOT/scripts/build-host.sh"
+MSA_SKIP_BUILD=1 "$ROOT/scripts/create-emulator-manager-app.sh" "$OUTPUT_DIR"
 
 STAGED_APP="$TEMP_DIR/$FILE_NAME.app"
 CONTENTS="$STAGED_APP/Contents"
 mkdir -p "$CONTENTS/MacOS" "$CONTENTS/Resources"
-cp "$ROOT/work/.build/release/MacWSAHost" "$CONTENTS/MacOS/MacWSAHost"
+cp "$ROOT/work/.build/release/MSAHost" "$CONTENTS/MacOS/MSAHost"
 
 PLIST="$CONTENTS/Info.plist"
 plutil -create xml1 "$PLIST"
 plutil -insert CFBundleDevelopmentRegion -string en "$PLIST"
 plutil -insert CFBundleDisplayName -string "$DISPLAY_NAME" "$PLIST"
-plutil -insert CFBundleExecutable -string MacWSAHost "$PLIST"
+plutil -insert CFBundleExecutable -string MSAHost "$PLIST"
 BUNDLE_SUFFIX=$(printf '%s' "$PACKAGE" | tr '_' '-')
-plutil -insert CFBundleIdentifier -string "dev.macwsa.android.$BUNDLE_SUFFIX" "$PLIST"
+plutil -insert CFBundleIdentifier -string "dev.msa.android.$BUNDLE_SUFFIX" "$PLIST"
 plutil -insert CFBundleInfoDictionaryVersion -string 6.0 "$PLIST"
 plutil -insert CFBundleName -string "$DISPLAY_NAME" "$PLIST"
 plutil -insert CFBundlePackageType -string APPL "$PLIST"
@@ -80,11 +89,19 @@ BUNDLE_VERSION=$(date +%Y%m%d%H%M%S)
 plutil -insert CFBundleVersion -string "$BUNDLE_VERSION" "$PLIST"
 plutil -insert LSMinimumSystemVersion -string 14.0 "$PLIST"
 plutil -insert NSHighResolutionCapable -bool YES "$PLIST"
-plutil -insert MacWSAPackageName -string "$PACKAGE" "$PLIST"
-plutil -insert MacWSADisplayName -string "$DISPLAY_NAME" "$PLIST"
+plutil -insert MSAPackageName -string "$PACKAGE" "$PLIST"
+plutil -insert MSADisplayName -string "$DISPLAY_NAME" "$PLIST"
+plutil -insert MSAEmulatorSerial -string "$SERIAL" "$PLIST"
+plutil -insert MSAAVDName -string "$AVD_NAME" "$PLIST"
+plutil -insert MSAAndroidSDKRoot -string "$SDK_ROOT" "$PLIST"
+if [ "$WRITABLE_SYSTEM" = 1 ]; then
+  plutil -insert MSAWritableSystem -bool YES "$PLIST"
+else
+  plutil -insert MSAWritableSystem -bool NO "$PLIST"
+fi
 
 ICON_CREATED=0
-ICON_URI="content://dev.macwsa.agent.icons/icon/$PACKAGE"
+ICON_URI="content://dev.msa.agent.icons/icon/$PACKAGE"
 if "$ADB" -s "$SERIAL" exec-out content read --uri "$ICON_URI" \
     >"$TEMP_DIR/source-icon" 2>/dev/null && \
     sips -s format png "$TEMP_DIR/source-icon" --out "$TEMP_DIR/source-icon.png" >/dev/null 2>&1; then
@@ -141,4 +158,5 @@ fi
 
 echo "Created: $APP"
 echo "Android package: $PACKAGE"
-echo "Before opening, run: ANDROID_SERIAL=$SERIAL $ROOT/scripts/forward.sh"
+echo "Emulator: $AVD_NAME ($SERIAL)"
+echo "Open the app to start the emulator automatically when needed."

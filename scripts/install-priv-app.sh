@@ -2,14 +2,14 @@
 set -eu
 
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
-SDK_ROOT=${ANDROID_SDK_ROOT:-/Users/kota113/Library/Android/sdk}
+SDK_ROOT=${ANDROID_SDK_ROOT:-"$HOME/Library/Android/sdk"}
 ADB=${ADB:-$SDK_ROOT/platform-tools/adb}
 SERIAL=${ANDROID_SERIAL:-emulator-5556}
 APKSIGNER="$SDK_ROOT/build-tools/36.0.0/apksigner"
-APK="$ROOT/android-agent/build/outputs/apk/release/MacWsaAgent-platform.apk"
-REMOTE_DIR=/system/priv-app/MacWsaAgent
-PERMISSIONS_REMOTE=/system/etc/permissions/privapp-permissions-macwsa.xml
-PACKAGE=dev.macwsa.agent
+APK="$ROOT/android-agent/build/outputs/apk/release/MsaAgent-platform.apk"
+REMOTE_DIR=/system/priv-app/MsaAgent
+PERMISSIONS_REMOTE=/system/etc/permissions/privapp-permissions-msa.xml
+PACKAGE=dev.msa.agent
 PROFILE=android.app.role.COMPANION_DEVICE_APP_STREAMING
 
 adb_cmd() {
@@ -47,11 +47,11 @@ echo "Agent certificate:"
 "$APKSIGNER" verify --print-certs "$APK" | sed -n '1,4p'
 
 adb_cmd shell mkdir -p "$REMOTE_DIR"
-adb_cmd push "$ROOT/android-agent/privapp-permissions-macwsa.xml" "$PERMISSIONS_REMOTE"
+adb_cmd push "$ROOT/android-agent/privapp-permissions-msa.xml" "$PERMISSIONS_REMOTE"
 adb_cmd shell chmod 0644 "$PERMISSIONS_REMOTE"
 adb_cmd shell restorecon "$PERMISSIONS_REMOTE"
-adb_cmd push "$APK" "$REMOTE_DIR/MacWsaAgent.apk"
-adb_cmd shell chmod 0644 "$REMOTE_DIR/MacWsaAgent.apk"
+adb_cmd push "$APK" "$REMOTE_DIR/MsaAgent.apk"
+adb_cmd shell chmod 0644 "$REMOTE_DIR/MsaAgent.apk"
 adb_cmd shell restorecon -RF "$REMOTE_DIR"
 adb_cmd reboot
 wait_boot
@@ -68,4 +68,4 @@ adb_cmd forward tcp:27183 tcp:27183
 adb_cmd shell pm path "$PACKAGE"
 adb_cmd shell cmd companiondevice list 0
 adb_cmd shell dumpsys package "$PACKAGE" | grep -E 'CREATE_VIRTUAL_DEVICE|REQUEST_COMPANION_PROFILE_APP_STREAMING' || true
-echo "MacWsaAgent privileged installation complete."
+echo "MsaAgent privileged installation complete."

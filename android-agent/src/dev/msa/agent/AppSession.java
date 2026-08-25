@@ -1,4 +1,4 @@
-package dev.macwsa.agent;
+package dev.msa.agent;
 
 import android.app.ActivityOptions;
 import android.companion.AssociationInfo;
@@ -31,7 +31,7 @@ import java.io.OutputStream;
 import java.util.List;
 
 final class AppSession implements AutoCloseable {
-    private static final String TAG = "MacWsaAgent";
+    private static final String TAG = "MsaAgent";
     private final Context context;
     private final SessionConfig config;
     private final OutputStream output;
@@ -64,7 +64,7 @@ final class AppSession implements AutoCloseable {
         int associationId = associations.get(0).getId();
         VirtualDeviceManager vdm = context.getSystemService(VirtualDeviceManager.class);
         VirtualDeviceParams params = new VirtualDeviceParams.Builder()
-                .setName("MacWSA:" + config.packageName)
+                .setName("MSA:" + config.packageName)
                 .setLockState(VirtualDeviceParams.LOCK_STATE_ALWAYS_UNLOCKED)
                 .build();
         device = vdm.createVirtualDevice(associationId, params);
@@ -81,7 +81,7 @@ final class AppSession implements AutoCloseable {
         }
 
         VirtualDisplayConfig displayConfig = new VirtualDisplayConfig.Builder(
-                "MacWSA:" + config.packageName, config.width, config.height, config.densityDpi)
+                "MSA:" + config.packageName, config.width, config.height, config.densityDpi)
                 .setSurface(encoder.surface())
                 .setFlags(displayFlags)
                 .build();
@@ -175,7 +175,7 @@ final class AppSession implements AutoCloseable {
     }
 
     private static String inputName(String type, int displayId) {
-        return "MacWSA " + type + " display-" + displayId;
+        return "MSA " + type + " display-" + displayId;
     }
 
     private void sendScroll(String[] p) {

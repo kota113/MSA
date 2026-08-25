@@ -1,11 +1,11 @@
 #!/bin/sh
 set -eu
 
-SDK_ROOT=${ANDROID_SDK_ROOT:-/Users/kota113/Library/Android/sdk}
+SDK_ROOT=${ANDROID_SDK_ROOT:-"$HOME/Library/Android/sdk"}
 SDKMANAGER="$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager"
 AVDMANAGER="$SDK_ROOT/cmdline-tools/latest/bin/avdmanager"
 PACKAGE="system-images;android-36;default;arm64-v8a"
-AVD_NAME=macwsa-api36
+AVD_NAME=msa-api36
 
 yes | "$SDKMANAGER" --licenses >/dev/null || true
 "$SDKMANAGER" "$PACKAGE"

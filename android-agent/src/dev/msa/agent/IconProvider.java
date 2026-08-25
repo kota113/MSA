@@ -1,4 +1,4 @@
-package dev.macwsa.agent;
+package dev.msa.agent;
 
 import android.content.ContentProvider;
 import android.content.ContentValues;
@@ -19,7 +19,7 @@ import java.util.List;
 
 /** Exports Android-rendered app icons to the adb shell as PNG. */
 public final class IconProvider extends ContentProvider {
-    private static final String TAG = "MacWsaAgent";
+    private static final String TAG = "MsaAgent";
     private static final int ICON_SIZE = 1024;
 
     @Override
@@ -47,7 +47,7 @@ public final class IconProvider extends ContentProvider {
             ParcelFileDescriptor[] pipe = ParcelFileDescriptor.createPipe();
             Thread renderer = new Thread(
                     () -> render(packageName, pipe[1]),
-                    "macwsa-icon-" + packageName);
+                    "msa-icon-" + packageName);
             renderer.start();
             return pipe[0];
         } catch (PackageManager.NameNotFoundException | IOException e) {

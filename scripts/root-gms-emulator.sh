@@ -2,10 +2,10 @@
 set -eu
 
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
-SDK_ROOT=${ANDROID_SDK_ROOT:-/Users/kota113/Library/Android/sdk}
+SDK_ROOT=${ANDROID_SDK_ROOT:-"$HOME/Library/Android/sdk"}
 SERIAL=${ANDROID_SERIAL:-emulator-5558}
 ROOTAVD_DIR="$ROOT/work/rootAVD-gms"
-RAMDISK=system-images/android-36/macwsa_google_apis_playstore/arm64-v8a/ramdisk.img
+RAMDISK=system-images/android-36/msa_google_apis_playstore/arm64-v8a/ramdisk.img
 
 if [ ! -x "$ROOTAVD_DIR/rootAVD.sh" ]; then
   echo "Run scripts/setup-gms-avd.sh first." >&2

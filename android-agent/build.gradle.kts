@@ -7,11 +7,11 @@ plugins {
 val systemApiJar = layout.projectDirectory.file("system-stubs/android.jar")
 
 android {
-    namespace = "dev.macwsa.agent"
+    namespace = "dev.msa.agent"
     compileSdk = 36
 
     defaultConfig {
-        applicationId = "dev.macwsa.agent"
+        applicationId = "dev.msa.agent"
         minSdk = 36
         targetSdk = 36
         versionCode = 3

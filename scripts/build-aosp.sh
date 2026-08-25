@@ -7,7 +7,7 @@ if [[ $# -ne 1 ]]; then
 fi
 AOSP_ROOT=$1
 PROJECT_ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
-EXPECTED="$AOSP_ROOT/vendor/macwsa"
+EXPECTED="$AOSP_ROOT/vendor/msa"
 if [[ ! -e "$EXPECTED" ]]; then
   echo "Place or symlink this repository at $EXPECTED first."
   echo "Example: ln -s '$PROJECT_ROOT' '$EXPECTED'"
@@ -15,6 +15,6 @@ if [[ ! -e "$EXPECTED" ]]; then
 fi
 cd "$AOSP_ROOT"
 source build/envsetup.sh
-lunch macwsa_arm64-userdebug
-m MacWsaAgent
+lunch msa_arm64-userdebug
+m MsaAgent
 m

@@ -1,6 +1,6 @@
-id=macwsa_agent
-name=MacWSA Privileged Agent
-version=0.3.0-poc
+id=msa_agent
+name=MSA Privileged Agent
+version=0.3.0
 versionCode=3
-author=MacWSA PoC
-description=Systemless priv-app and permission allowlist for the local MacWSA GMS emulator experiment.
+author=MSA Project
+description=Systemless priv-app and permission allowlist that let the emulator stream apps to macOS via Companion Device app streaming.

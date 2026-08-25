@@ -2,12 +2,12 @@
 set -eu
 
 ADB=${ADB:-adb}
-PACKAGE=dev.macwsa.agent
+PACKAGE=dev.msa.agent
 PROFILE=android.app.role.COMPANION_DEVICE_APP_STREAMING
 
 "$ADB" wait-for-device
 if ! "$ADB" shell pm path "$PACKAGE" >/dev/null 2>&1; then
-  echo "$PACKAGE is not installed. Boot the macwsa_arm64 AOSP image."
+  echo "$PACKAGE is not installed. Boot the msa_arm64 AOSP image."
   exit 1
 fi
 

@@ -2,12 +2,12 @@
 set -eu
 
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
-SDK_ROOT=${ANDROID_SDK_ROOT:-/Users/kota113/Library/Android/sdk}
+SDK_ROOT=${ANDROID_SDK_ROOT:-"$HOME/Library/Android/sdk"}
 ADB=${ADB:-$SDK_ROOT/platform-tools/adb}
 SERIAL=${ANDROID_SERIAL:-emulator-5558}
-MODULE="$ROOT/work/MacWsaAgent-magisk.zip"
-REMOTE_MODULE=/data/local/tmp/MacWsaAgent-magisk.zip
-PACKAGE=dev.macwsa.agent
+MODULE="$ROOT/work/MsaAgent-magisk.zip"
+REMOTE_MODULE=/data/local/tmp/MsaAgent-magisk.zip
+PACKAGE=dev.msa.agent
 PROFILE=android.app.role.COMPANION_DEVICE_APP_STREAMING
 AUTOMOTIVE_ROLE=android.app.role.SYSTEM_AUTOMOTIVE_PROJECTION
 
@@ -59,7 +59,7 @@ adb_cmd shell cmd role set-bypassing-role-qualification false
 
 # The static RRO makes the agent the qualified automotive projection holder.
 # Refreshing the holder causes RoleController to grant CAPTURE_SECURE_VIDEO_OUTPUT.
-if adb_cmd shell cmd role get-role-holders --user 0 "$AUTOMOTIVE_ROLE" | grep -q '^dev.macwsa.agent$'; then
+if adb_cmd shell cmd role get-role-holders --user 0 "$AUTOMOTIVE_ROLE" | grep -q '^dev.msa.agent$'; then
   adb_cmd shell cmd role remove-role-holder --user 0 "$AUTOMOTIVE_ROLE" "$PACKAGE" 0
 fi
 if adb_cmd shell cmd role get-role-holders --user 0 "$AUTOMOTIVE_ROLE" | grep -q '^com.google.android.projection.gearhead$'; then
@@ -75,4 +75,4 @@ adb_cmd shell pm path "$PACKAGE"
 adb_cmd shell cmd companiondevice list 0
 adb_cmd shell dumpsys package "$PACKAGE" | grep -E \
   'CAPTURE_SECURE_VIDEO_OUTPUT|CREATE_VIRTUAL_DEVICE|REQUEST_COMPANION_PROFILE_APP_STREAMING|ADD_TRUSTED_DISPLAY' || true
-echo "MacWsaAgent Magisk module installation complete on $SERIAL."
+echo "MsaAgent Magisk module installation complete on $SERIAL."

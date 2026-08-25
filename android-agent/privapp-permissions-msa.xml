@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <permissions>
-    <privapp-permissions package="dev.macwsa.agent">
+    <privapp-permissions package="dev.msa.agent">
         <permission name="android.permission.REQUEST_COMPANION_PROFILE_APP_STREAMING" />
         <permission name="android.permission.ADD_ALWAYS_UNLOCKED_DISPLAY" />
         <permission name="android.permission.ADD_TRUSTED_DISPLAY" />

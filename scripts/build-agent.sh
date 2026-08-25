@@ -2,7 +2,7 @@
 set -eu
 
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
-SDK_ROOT=${ANDROID_SDK_ROOT:-/Users/kota113/Library/Android/sdk}
+SDK_ROOT=${ANDROID_SDK_ROOT:-"$HOME/Library/Android/sdk"}
 GRADLE=${GRADLE:-$ROOT/android-agent/gradlew}
 APKSIGNER="$SDK_ROOT/build-tools/36.0.0/apksigner"
 
@@ -13,8 +13,8 @@ fi
 cd "$ROOT/android-agent"
 "$GRADLE" --no-daemon assembleRelease
 
-UNSIGNED="$ROOT/android-agent/build/outputs/apk/release/MacWsaAgent-release-unsigned.apk"
-SIGNED="$ROOT/android-agent/build/outputs/apk/release/MacWsaAgent-platform.apk"
+UNSIGNED="$ROOT/android-agent/build/outputs/apk/release/MsaAgent-release-unsigned.apk"
+SIGNED="$ROOT/android-agent/build/outputs/apk/release/MsaAgent-platform.apk"
 "$APKSIGNER" sign \
   --key "$ROOT/android-agent/test-keys/platform.pk8" \
   --cert "$ROOT/android-agent/test-keys/platform.x509.pem" \

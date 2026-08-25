@@ -1,4 +1,4 @@
-package dev.macwsa.agent;
+package dev.msa.agent;
 
 import android.content.BroadcastReceiver;
 import android.content.Context;

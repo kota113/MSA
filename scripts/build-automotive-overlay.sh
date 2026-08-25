@@ -9,13 +9,13 @@ APKSIGNER="$BUILD_TOOLS/apksigner"
 ANDROID_JAR="$SDK_ROOT/platforms/android-36/android.jar"
 SOURCE="$ROOT/android-agent/automotive-overlay"
 OUTPUT_DIR="$ROOT/android-agent/build/outputs/overlay"
-TEMP_DIR=$(mktemp -d "${TMPDIR:-/tmp}/macwsa-overlay.XXXXXX")
+TEMP_DIR=$(mktemp -d "${TMPDIR:-/tmp}/msa-overlay.XXXXXX")
 trap 'rm -rf "$TEMP_DIR"' EXIT HUP INT TERM
 
 mkdir -p "$OUTPUT_DIR"
 "$AAPT2" compile --dir "$SOURCE/res" -o "$TEMP_DIR/resources.zip"
 "$AAPT2" link \
-  -o "$TEMP_DIR/MacWsaAutomotiveProjectionOverlay-unsigned.apk" \
+  -o "$TEMP_DIR/MsaAutomotiveProjectionOverlay-unsigned.apk" \
   --manifest "$SOURCE/AndroidManifest.xml" \
   --auto-add-overlay \
   -I "$ANDROID_JAR" \
@@ -23,7 +23,7 @@ mkdir -p "$OUTPUT_DIR"
 "$APKSIGNER" sign \
   --key "$ROOT/android-agent/test-keys/platform.pk8" \
   --cert "$ROOT/android-agent/test-keys/platform.x509.pem" \
-  --out "$OUTPUT_DIR/MacWsaAutomotiveProjectionOverlay.apk" \
-  "$TEMP_DIR/MacWsaAutomotiveProjectionOverlay-unsigned.apk"
-"$APKSIGNER" verify "$OUTPUT_DIR/MacWsaAutomotiveProjectionOverlay.apk"
-echo "Built: $OUTPUT_DIR/MacWsaAutomotiveProjectionOverlay.apk"
+  --out "$OUTPUT_DIR/MsaAutomotiveProjectionOverlay.apk" \
+  "$TEMP_DIR/MsaAutomotiveProjectionOverlay-unsigned.apk"
+"$APKSIGNER" verify "$OUTPUT_DIR/MsaAutomotiveProjectionOverlay.apk"
+echo "Built: $OUTPUT_DIR/MsaAutomotiveProjectionOverlay.apk"

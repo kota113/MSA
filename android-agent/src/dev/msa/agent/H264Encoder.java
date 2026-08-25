@@ -1,4 +1,4 @@
-package dev.macwsa.agent;
+package dev.msa.agent;
 
 import android.media.MediaCodec;
 import android.media.MediaCodecInfo;
@@ -38,12 +38,12 @@ final class H264Encoder implements AutoCloseable {
 
     void start(boolean sendStreamHeader) throws IOException {
         if (sendStreamHeader) {
-            output.write("MWSA1\n".getBytes(java.nio.charset.StandardCharsets.US_ASCII));
+            output.write("MSA01\n".getBytes(java.nio.charset.StandardCharsets.US_ASCII));
             output.flush();
         }
         codec.start();
         running = true;
-        drainThread = new Thread(this::drain, "macwsa-h264");
+        drainThread = new Thread(this::drain, "msa-h264");
         drainThread.start();
     }
 

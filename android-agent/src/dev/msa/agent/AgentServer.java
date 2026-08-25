@@ -1,4 +1,4 @@
-package dev.macwsa.agent;
+package dev.msa.agent;
 
 import android.content.Context;
 import android.util.Log;
@@ -14,7 +14,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 final class AgentServer implements AutoCloseable {
-    private static final String TAG = "MacWsaAgent";
+    private static final String TAG = "MsaAgent";
     private final Context context;
     private final int port;
     private final ExecutorService clients = Executors.newCachedThreadPool();
@@ -27,7 +27,7 @@ final class AgentServer implements AutoCloseable {
     }
 
     void start() {
-        Thread thread = new Thread(this::acceptLoop, "macwsa-listener");
+        Thread thread = new Thread(this::acceptLoop, "msa-listener");
         thread.start();
     }
 

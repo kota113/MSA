@@ -13,7 +13,7 @@ fetch_gitiles_blob() {
   url=$1
   destination=$2
   encoded="$ROOT/work/downloads/$(basename "$destination").base64"
-  curl --fail --location --retry 3 --user-agent MacWSA-PoC "$url?format=TEXT" --output "$encoded"
+  curl --fail --location --retry 3 --user-agent MSA "$url?format=TEXT" --output "$encoded"
   base64 --decode --input "$encoded" --output "$destination"
   rm "$encoded"
 }
