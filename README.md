@@ -1,3 +1,5 @@
+<img width="1198" height="963" alt="image" src="https://github.com/user-attachments/assets/7850eb0a-7316-4492-85b8-5ff716f9b0d0" />
+
 # macOS Subsystem for Android (MSA)
 
 macOS Subsystem for Android (MSA) runs the official Android Emulator as a VM backend and
