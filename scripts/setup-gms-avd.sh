@@ -7,9 +7,10 @@ SDKMANAGER="$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager"
 AVDMANAGER="$SDK_ROOT/cmdline-tools/latest/bin/avdmanager"
 PACKAGE="system-images;android-36.1;google_apis_playstore;arm64-v8a"
 SOURCE_IMAGE="$SDK_ROOT/system-images/android-36.1/google_apis_playstore/arm64-v8a"
-PRIVATE_IMAGE="$SDK_ROOT/system-images/android-36.1/msa_google_apis_playstore/arm64-v8a"
-VERSION_LINK="$SDK_ROOT/system-images/android-36/msa_google_apis_playstore/arm64-v8a"
-AVD_NAME=msa-gms-api36
+IMAGE_NAME=${MSA_GMS_IMAGE_NAME:-msa_google_apis_playstore}
+PRIVATE_IMAGE="$SDK_ROOT/system-images/android-36.1/$IMAGE_NAME/arm64-v8a"
+VERSION_LINK="$SDK_ROOT/system-images/android-36/$IMAGE_NAME/arm64-v8a"
+AVD_NAME=${MSA_AVD_NAME:-msa-gms-api36}
 AVD_CONFIG="$HOME/.android/avd/$AVD_NAME.avd/config.ini"
 ROOTAVD_DIR="$ROOT/work/rootAVD-gms"
 ROOTAVD_COMMIT=92df40eafa2f117053f56015e3c32ca706a55fa9
@@ -41,7 +42,7 @@ CONFIG_TMP=$(mktemp "${TMPDIR:-/tmp}/msa-avd-config.XXXXXX")
 trap 'rm -f "$CONFIG_TMP"' EXIT HUP INT TERM
 awk '
   /^image\.sysdir\.1=/ {
-    print "image.sysdir.1=system-images/android-36.1/msa_google_apis_playstore/arm64-v8a/"
+    print "image.sysdir.1=system-images/android-36.1/'"$IMAGE_NAME"'/arm64-v8a/"
     next
   }
   { print }

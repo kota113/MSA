@@ -5,7 +5,8 @@ ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 SDK_ROOT=${ANDROID_SDK_ROOT:-"$HOME/Library/Android/sdk"}
 SERIAL=${ANDROID_SERIAL:-emulator-5558}
 ROOTAVD_DIR="$ROOT/work/rootAVD-gms"
-RAMDISK=system-images/android-36/msa_google_apis_playstore/arm64-v8a/ramdisk.img
+IMAGE_NAME=${MSA_GMS_IMAGE_NAME:-msa_google_apis_playstore}
+RAMDISK=system-images/android-36/$IMAGE_NAME/arm64-v8a/ramdisk.img
 
 if [ ! -x "$ROOTAVD_DIR/rootAVD.sh" ]; then
   echo "Run scripts/setup-gms-avd.sh first." >&2
