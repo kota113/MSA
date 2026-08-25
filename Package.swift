@@ -15,6 +15,11 @@ let package = Package(
                 .linkedFramework("CoreMedia"),
                 .linkedFramework("VideoToolbox"),
             ]
-        )
+        ),
+        .testTarget(
+            name: "MacWSAHostTests",
+            dependencies: ["MacWSAHost"],
+            path: "macos-host/Tests/MacWSAHostTests"
+        ),
     ]
 )
