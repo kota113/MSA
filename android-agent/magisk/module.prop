@@ -1,0 +1,6 @@
+id=macwsa_agent
+name=MacWSA Privileged Agent
+version=0.1.0-poc
+versionCode=1
+author=MacWSA PoC
+description=Systemless priv-app and permission allowlist for the local MacWSA GMS emulator experiment.

@@ -87,6 +87,41 @@ scripts/run-host.sh com.android.settings
 
 インストール済みの別アプリはpackage名を置き換えます。2つ起動すれば、独立したVirtualDisplayとNSWindowが2つ作られます。
 
+## Google Play実験用AVD（rootAVD）
+
+Google Play StoreとGMSを使う実験用構成は、通常のAOSP AVDとは別の`macwsa-gms-api36`として用意します。SDKのGoogle Play imageをAPFSのコピーオンライトで分離してからrootAVD/Magiskで専用ramdiskだけを変更するため、既存のPixel AVDと元のsystem imageには影響しません。
+
+初回だけ次を実行します。
+
+```sh
+cd ~/IdeaProjects/macwsa-poc
+scripts/setup-gms-avd.sh
+GMS_EMULATOR_WINDOW=1 scripts/start-gms-emulator.sh
+```
+
+別ターミナルでrootAVDを実行します。完了時にEmulatorは終了します。
+
+```sh
+ANDROID_SERIAL=emulator-5558 scripts/root-gms-emulator.sh
+```
+
+再度`GMS_EMULATOR_WINDOW=1 scripts/start-gms-emulator.sh`で起動し、Magiskを開いてAdditional setupを承認します。自動再起動後、MagiskのSuperuser画面で`[SharedUID] Shell`を有効にしてからagent moduleを導入します。
+
+```sh
+ANDROID_SERIAL=emulator-5558 scripts/install-gms-agent.sh
+```
+
+通常起動ではウィンドウ不要です。
+
+```sh
+scripts/start-gms-emulator.sh
+ANDROID_SERIAL=emulator-5558 scripts/forward.sh
+scripts/run-host.sh com.android.settings
+scripts/run-host.sh com.android.vending
+```
+
+これはローカル実験専用です。Google Play image、GMS、Magisk、rootAVD、agent APKを成果物へ同梱・再配布しないでください。root化されたEmulatorではPlay Integrity、DRM、Walletなどが動作しない場合があります。
+
 ## 検証
 
 ```sh

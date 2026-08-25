@@ -80,10 +80,10 @@ final class AppSession implements AutoCloseable {
 
         createTouchscreen(config.width, config.height, displayId);
         mouse = device.createVirtualMouse(new VirtualMouseConfig.Builder()
-                .setAssociatedDisplayId(displayId).setInputDeviceName("MacWSA Mouse")
+                .setAssociatedDisplayId(displayId).setInputDeviceName(inputName("Mouse", displayId))
                 .setVendorId(0x18d1).setProductId(0x4ee8).build());
         keyboard = device.createVirtualKeyboard(new VirtualKeyboardConfig.Builder()
-                .setAssociatedDisplayId(displayId).setInputDeviceName("MacWSA Keyboard")
+                .setAssociatedDisplayId(displayId).setInputDeviceName(inputName("Keyboard", displayId))
                 .setVendorId(0x18d1).setProductId(0x4ee9).build());
 
         encoder.start(true);
@@ -159,8 +159,12 @@ final class AppSession implements AutoCloseable {
 
     private void createTouchscreen(int width, int height, int displayId) {
         touchscreen = device.createVirtualTouchscreen(new VirtualTouchscreenConfig.Builder(width, height)
-                .setAssociatedDisplayId(displayId).setInputDeviceName("MacWSA Touch")
+                .setAssociatedDisplayId(displayId).setInputDeviceName(inputName("Touch", displayId))
                 .setVendorId(0x18d1).setProductId(0x4ee7).build());
+    }
+
+    private static String inputName(String type, int displayId) {
+        return "MacWSA " + type + " display-" + displayId;
     }
 
     private void sendScroll(String[] p) {

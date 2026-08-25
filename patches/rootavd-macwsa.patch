@@ -1,0 +1,29 @@
+diff --git a/rootAVD.sh b/rootAVD.sh
+index bf92d47..a0afe31 100755
+--- a/rootAVD.sh
++++ b/rootAVD.sh
+@@ -445,10 +445,14 @@ checkfile() {
+ install_apps() {
+ 	local ADBECHO=""
+-  	APPS="Apps/*"
++  	APPS="Apps/*.apk"
+ 	echo "[-] Install all APKs placed in the Apps folder"
+ 	FILES=$APPS
+ 
+ 	for f in $FILES; do
++		if [ ! -f "$f" ]; then
++			echo "[-] No APKs to install"
++			return
++		fi
+ 		echo "[*] Trying to install $f"
+ 		ADBECHO=""
+ 		while [[ "$ADBECHO" != *"Success"* ]]; do
+@@ -778,7 +782,7 @@ CopyMagiskToAVD() {
+ 	# If Magisk.zip file doesn't exist, just ignore it
+ 	if ( ! checkfile "$MAGISKZIP" -eq 0 ); then
+ 		echo "[-] Magisk installer Zip exists already"
+-		pushtoAVD "$MAGISKZIP"
++		pushtoAVD "$MAGISKZIP" "Magisk.zip"
+ 	fi
+ 
+ 	# Proceed with ramdisk
