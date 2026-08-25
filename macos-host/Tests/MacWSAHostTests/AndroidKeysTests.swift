@@ -27,4 +27,29 @@ final class AndroidKeysTests: XCTestCase {
         XCTAssertEqual(AndroidKeys[50], 68)  // `
         XCTAssertEqual(AndroidKeys[48], 61)  // Tab
     }
+
+    func testLeftAndRightShiftToggleIndependently() {
+        var state = ModifierKeyState()
+
+        XCTAssertEqual(state.toggle(macKeyCode: 56),
+                       AndroidKeyTransition(action: 0, androidKeyCode: 59))
+        XCTAssertEqual(state.toggle(macKeyCode: 60),
+                       AndroidKeyTransition(action: 0, androidKeyCode: 60))
+        XCTAssertEqual(state.toggle(macKeyCode: 56),
+                       AndroidKeyTransition(action: 1, androidKeyCode: 59))
+        XCTAssertEqual(state.toggle(macKeyCode: 60),
+                       AndroidKeyTransition(action: 1, androidKeyCode: 60))
+    }
+
+    func testModifierKeysReleaseWhenWindowLosesFocus() {
+        var state = ModifierKeyState()
+        _ = state.toggle(macKeyCode: 60)
+        _ = state.toggle(macKeyCode: 56)
+
+        XCTAssertEqual(state.releaseAll(), [
+            AndroidKeyTransition(action: 1, androidKeyCode: 59),
+            AndroidKeyTransition(action: 1, androidKeyCode: 60),
+        ])
+        XCTAssertTrue(state.releaseAll().isEmpty)
+    }
 }

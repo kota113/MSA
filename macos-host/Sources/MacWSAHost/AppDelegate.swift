@@ -2,10 +2,11 @@ import AppKit
 import Foundation
 
 @MainActor
-final class AppDelegate: NSObject, NSApplicationDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private let arguments: Arguments
     private var window: NSWindow?
     private var connection: SocketConnection?
+    private var androidView: AndroidView?
 
     init(arguments: Arguments) { self.arguments = arguments }
 
@@ -26,9 +27,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             window.title = arguments.windowTitle
             window.contentMinSize = NSSize(width: 216, height: 384)
             window.contentView = view
+            window.delegate = self
             window.makeKeyAndOrderFront(nil)
             window.makeFirstResponder(view)
             self.window = window
+            self.androidView = view
             Task.detached { [weak self] in
                 do {
                     let magic = try connection.readExactly(6)
@@ -59,6 +62,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
+    func windowDidResignKey(_ notification: Notification) { androidView?.releaseModifierKeys() }
     func applicationWillTerminate(_ notification: Notification) { connection?.close() }
 }
 

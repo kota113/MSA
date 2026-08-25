@@ -13,6 +13,7 @@ final class AndroidView: NSView {
     private let initialPixelArea: CGFloat
     private var resizeWorkItem: DispatchWorkItem?
     private var acceptsResizeEvents = false
+    private var modifierKeyState = ModifierKeyState()
 
     init(frame: NSRect, connection: SocketConnection, display: H264Display,
          androidWidth: Int, androidHeight: Int, densityDpi: Int) {
@@ -140,7 +141,54 @@ final class AndroidView: NSView {
     override func keyUp(with event: NSEvent) {
         if let code = AndroidKeys[event.keyCode] { connection.sendLine("KEY 1 \(code)") }
     }
+
+    override func flagsChanged(with event: NSEvent) {
+        guard let transition = modifierKeyState.toggle(macKeyCode: event.keyCode) else {
+            super.flagsChanged(with: event)
+            return
+        }
+        connection.sendLine("KEY \(transition.action) \(transition.androidKeyCode)")
+    }
+
+    func releaseModifierKeys() {
+        for transition in modifierKeyState.releaseAll() {
+            connection.sendLine("KEY \(transition.action) \(transition.androidKeyCode)")
+        }
+    }
 }
+
+struct AndroidKeyTransition: Equatable {
+    let action: Int
+    let androidKeyCode: Int
+}
+
+struct ModifierKeyState {
+    private var pressedMacKeyCodes: Set<UInt16> = []
+
+    mutating func toggle(macKeyCode: UInt16) -> AndroidKeyTransition? {
+        guard let androidKeyCode = AndroidModifierKeys[macKeyCode] else { return nil }
+        if pressedMacKeyCodes.remove(macKeyCode) != nil {
+            return AndroidKeyTransition(action: 1, androidKeyCode: androidKeyCode)
+        }
+        pressedMacKeyCodes.insert(macKeyCode)
+        return AndroidKeyTransition(action: 0, androidKeyCode: androidKeyCode)
+    }
+
+    mutating func releaseAll() -> [AndroidKeyTransition] {
+        let transitions = pressedMacKeyCodes.sorted().compactMap { macKeyCode in
+            AndroidModifierKeys[macKeyCode].map {
+                AndroidKeyTransition(action: 1, androidKeyCode: $0)
+            }
+        }
+        pressedMacKeyCodes.removeAll()
+        return transitions
+    }
+}
+
+let AndroidModifierKeys: [UInt16: Int] = [
+    56: 59, // Left Shift -> KEYCODE_SHIFT_LEFT
+    60: 60, // Right Shift -> KEYCODE_SHIFT_RIGHT
+]
 
 let AndroidKeys: [UInt16: Int] = [
     // ANSI letters
