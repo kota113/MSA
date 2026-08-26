@@ -13,7 +13,9 @@ final class EmulatorConfigurationTests: XCTestCase {
         XCTAssertEqual(configuration.port, 5558)
         XCTAssertEqual(configuration.launchArguments(coldBoot: false), [
             "-avd", "msa-gms-api36", "-port", "5558", "-no-window",
-            "-no-boot-anim", "-gpu", "host",
+            "-no-boot-anim", "-gpu", "host", "-audio", "coreaudio",
+            "-allow-host-audio",
+            "-camera-front", "emulated", "-camera-back", "emulated",
         ])
     }
 
@@ -27,7 +29,9 @@ final class EmulatorConfigurationTests: XCTestCase {
 
         XCTAssertEqual(configuration.launchArguments(coldBoot: true), [
             "-avd", "msa-gms-api36", "-port", "5558", "-no-window",
-            "-no-boot-anim", "-gpu", "host", "-no-snapshot-load",
+            "-no-boot-anim", "-gpu", "host", "-audio", "coreaudio",
+            "-allow-host-audio",
+            "-camera-front", "emulated", "-camera-back", "emulated", "-no-snapshot-load",
         ])
     }
 
@@ -40,6 +44,38 @@ final class EmulatorConfigurationTests: XCTestCase {
         )
 
         XCTAssertTrue(configuration.launchArguments(coldBoot: false).contains("-writable-system"))
+    }
+
+    func testSelectedCamerasArePassedToEmulator() throws {
+        let configuration = try EmulatorConfiguration(
+            sdkRoot: "/tmp/android-sdk", serial: "emulator-5556", avdName: "msa-api36",
+            writableSystem: true, frontCamera: "webcam0", backCamera: "none"
+        )
+
+        let arguments = configuration.launchArguments(coldBoot: false)
+        XCTAssertEqual(arguments[arguments.firstIndex(of: "-camera-front")! + 1], "webcam0")
+        XCTAssertEqual(arguments[arguments.firstIndex(of: "-camera-back")! + 1], "none")
+        XCTAssertEqual(arguments[arguments.firstIndex(of: "-audio")! + 1], "coreaudio")
+        XCTAssertTrue(arguments.contains("-allow-host-audio"))
+    }
+
+    func testWebcamListParserPreservesDeviceNames() {
+        let output = """
+        List of web cameras connected to the computer:
+         Camera 'webcam0' is connected to device 'MacBook Airのカメラ' on channel 0 using pixel format 'YV12'
+         Camera 'webcam1' is connected to device 'USB Camera' on channel 0 using pixel format 'NV12'
+        """
+
+        XCTAssertEqual(EmulatorCamera.parseList(output), [
+            EmulatorCamera(id: "webcam0", name: "MacBook Airのカメラ"),
+            EmulatorCamera(id: "webcam1", name: "USB Camera"),
+        ])
+    }
+
+    func testAudioInputEnumerationReturnsUniqueUIDs() {
+        let devices = EmulatorAudioInput.availableDevices()
+
+        XCTAssertEqual(Set(devices.map(\.uid)).count, devices.count)
     }
 
     func testInvalidSerialIsRejected() {

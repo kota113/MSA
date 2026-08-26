@@ -31,6 +31,8 @@ Android Emulator (unmodified AOSP framework) │
 - Launches the target Activity on that display with `ActivityOptions.setLaunchDisplayId()`
 - Injects macOS input into VirtualTouchscreen / VirtualMouse / VirtualKeyboard
 - Streams H.264 via MediaCodec and decodes/paints it in AppKit
+- Routes Android playback and microphone input through macOS CoreAudio
+- Maps selectable macOS cameras to Android's front and back cameras
 - Resizes the VirtualDisplay, density, encoder, and touchscreen to match the `NSWindow`'s
   aspect ratio and size live
 - Maps 1 connection → 1 VirtualDevice → 1 `NSWindow`
@@ -40,8 +42,8 @@ Android Emulator (unmodified AOSP framework) │
 
 ## Known limitations
 
-- Not yet implemented: audio passthrough, clipboard sharing, system notifications, IME
-  composition, and DRM-protected video.
+- Not yet implemented: clipboard sharing, system notifications, IME composition, and
+  DRM-protected video.
 - The wire protocol has no authentication and is only safe behind `adb forward`'s localhost
   connection — see [Security notes](#security-notes).
 - The priv-app is signed with an AOSP development test key, not a production signing key.
@@ -175,10 +177,20 @@ open "$HOME/Applications/Google Play Store.app"
 ```
 
 `MSA Emulator.app` runs as a separate menu-bar process from any app-specific `.app`. Its
-menu lets you start, restart, and stop the emulator, and it is the only process that controls
-the emulator lifecycle. After the last Android app window closes, the manager pauses the VM
+menu lets you start, restart, and stop the emulator, choose the macOS cameras used for Android's
+front and back cameras, and choose its microphone input. Camera choices are saved per emulator;
+changing one restarts the running emulator so the new device can be attached. Microphone choices
+are also saved per emulator and applied as the macOS default input device because Android Emulator's
+CoreAudio backend does not provide per-process device selection. The manager asks for confirmation
+before changing the macOS default input device. Use **Refresh Media Devices** after connecting or
+disconnecting a camera or microphone. Android playback and microphone input use macOS CoreAudio.
+The manager is the only process that controls the emulator lifecycle. After the last Android app window closes, the manager pauses the VM
 after 30 seconds to reduce idle CPU usage. After five minutes it
 shuts down the emulator and saves its Quick Boot state while the menu-bar app remains available.
+
+Each app-specific `.app` has an **Android** menu in the macOS menu bar. Use it to send **Back**
+(also available as **Command-[**), **Volume Up**, **Volume Down**, or **Mute** to that Android app.
+These volume controls change Android's volume, not the macOS system volume.
 The menu shows the idle, paused, snapshot-saving, and stopped states. If a saved-state boot
 fails, the manager automatically retries once with a cold boot.
 

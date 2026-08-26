@@ -27,6 +27,7 @@ STAGED_APP="$TEMP_DIR/MSA Emulator.app"
 CONTENTS="$STAGED_APP/Contents"
 mkdir -p "$CONTENTS/MacOS" "$CONTENTS/Resources"
 cp "$ROOT/work/.build/release/MSAHost" "$CONTENTS/MacOS/MSAHost"
+cp "$ROOT/macos-host/Resources/MSAMenuBarIcon.png" "$CONTENTS/Resources/MSAMenuBarIcon.png"
 
 PLIST="$CONTENTS/Info.plist"
 plutil -create xml1 "$PLIST"
@@ -42,6 +43,8 @@ plutil -insert CFBundleVersion -string "$(date +%Y%m%d%H%M%S)" "$PLIST"
 plutil -insert LSMinimumSystemVersion -string 14.0 "$PLIST"
 plutil -insert LSUIElement -bool YES "$PLIST"
 plutil -insert NSHighResolutionCapable -bool YES "$PLIST"
+plutil -insert NSCameraUsageDescription -string "MSA Emulator uses the selected camera for Android apps." "$PLIST"
+plutil -insert NSMicrophoneUsageDescription -string "MSA Emulator uses the selected microphone for Android apps." "$PLIST"
 plutil -insert MSAEmulatorManager -bool YES "$PLIST"
 plutil -insert MSAEmulatorSerial -string "$SERIAL" "$PLIST"
 plutil -insert MSAAVDName -string "$AVD_NAME" "$PLIST"
@@ -52,11 +55,24 @@ else
   plutil -insert MSAWritableSystem -bool NO "$PLIST"
 fi
 
-GENERIC_ICON="/System/Library/CoreServices/CoreTypes.bundle/Contents/Resources/GenericApplicationIcon.icns"
-if [ -f "$GENERIC_ICON" ]; then
-  cp "$GENERIC_ICON" "$CONTENTS/Resources/AppIcon.icns"
-  plutil -insert CFBundleIconFile -string AppIcon "$PLIST"
-fi
+ICON_SOURCE="$ROOT/macos-host/Resources/MSAAppIcon.png"
+ICONSET="$TEMP_DIR/AppIcon.iconset"
+ICON_MASTER="$TEMP_DIR/AppIcon.png"
+mkdir -p "$ICONSET"
+sips -Z 1024 "$ICON_SOURCE" --out "$ICON_MASTER" >/dev/null
+sips -p 1024 1024 "$ICON_MASTER" --out "$ICON_MASTER" >/dev/null
+sips -z 16 16 "$ICON_MASTER" --out "$ICONSET/icon_16x16.png" >/dev/null
+sips -z 32 32 "$ICON_MASTER" --out "$ICONSET/icon_16x16@2x.png" >/dev/null
+sips -z 32 32 "$ICON_MASTER" --out "$ICONSET/icon_32x32.png" >/dev/null
+sips -z 64 64 "$ICON_MASTER" --out "$ICONSET/icon_32x32@2x.png" >/dev/null
+sips -z 128 128 "$ICON_MASTER" --out "$ICONSET/icon_128x128.png" >/dev/null
+sips -z 256 256 "$ICON_MASTER" --out "$ICONSET/icon_128x128@2x.png" >/dev/null
+sips -z 256 256 "$ICON_MASTER" --out "$ICONSET/icon_256x256.png" >/dev/null
+sips -z 512 512 "$ICON_MASTER" --out "$ICONSET/icon_256x256@2x.png" >/dev/null
+sips -z 512 512 "$ICON_MASTER" --out "$ICONSET/icon_512x512.png" >/dev/null
+sips -z 1024 1024 "$ICON_MASTER" --out "$ICONSET/icon_512x512@2x.png" >/dev/null
+iconutil -c icns "$ICONSET" -o "$CONTENTS/Resources/AppIcon.icns"
+plutil -insert CFBundleIconFile -string AppIcon "$PLIST"
 
 codesign --force --deep --sign - "$STAGED_APP" >/dev/null
 mkdir -p "$OUTPUT_DIR"

@@ -29,11 +29,55 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     init(arguments: Arguments) { self.arguments = arguments }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        createMainMenu()
         DistributedNotificationCenter.default().addObserver(
             self, selector: #selector(handleManagerResponse),
             name: EmulatorManagerIPC.response, object: nil
         )
         ensureEmulatorAndOpenWindow()
+    }
+
+    private func createMainMenu() {
+        let mainMenu = NSMenu()
+
+        let appMenuItem = NSMenuItem()
+        let appMenu = NSMenu()
+        let appName = Bundle.main.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String
+            ?? ProcessInfo.processInfo.processName
+        appMenu.addItem(withTitle: "About \(appName)", action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)),
+                        keyEquivalent: "")
+        appMenu.addItem(.separator())
+        appMenu.addItem(withTitle: "Quit \(appName)", action: #selector(NSApplication.terminate(_:)),
+                        keyEquivalent: "q")
+        appMenuItem.submenu = appMenu
+        mainMenu.addItem(appMenuItem)
+
+        let androidMenuItem = NSMenuItem()
+        let androidMenu = NSMenu(title: "Android")
+        addAndroidKeyMenuItem(to: androidMenu, title: "Back", keyCode: 4, keyEquivalent: "[")
+        androidMenu.addItem(.separator())
+        addAndroidKeyMenuItem(to: androidMenu, title: "Volume Up", keyCode: 24)
+        addAndroidKeyMenuItem(to: androidMenu, title: "Volume Down", keyCode: 25)
+        addAndroidKeyMenuItem(to: androidMenu, title: "Mute", keyCode: 164)
+        androidMenuItem.submenu = androidMenu
+        mainMenu.addItem(androidMenuItem)
+
+        NSApplication.shared.mainMenu = mainMenu
+    }
+
+    private func addAndroidKeyMenuItem(to menu: NSMenu, title: String, keyCode: Int,
+                                       keyEquivalent: String = "") {
+        let item = NSMenuItem(title: title, action: #selector(sendAndroidKeyFromMenu(_:)),
+                              keyEquivalent: keyEquivalent)
+        item.target = self
+        item.representedObject = keyCode
+        menu.addItem(item)
+    }
+
+    @objc private func sendAndroidKeyFromMenu(_ sender: NSMenuItem) {
+        guard let keyCode = sender.representedObject as? Int else { return }
+        connection?.sendLine("KEY 0 \(keyCode)")
+        connection?.sendLine("KEY 1 \(keyCode)")
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }

@@ -2,6 +2,10 @@ import AppKit
 
 @MainActor
 final class EmulatorManagerAppDelegate: NSObject, NSApplicationDelegate {
+    private enum CameraPosition: Int {
+        case front
+        case back
+    }
     private static let pauseDelay: TimeInterval = 30
     private static let stopDelay: TimeInterval = 5 * 60
     private static let clientLeaseDuration: TimeInterval = 90
@@ -14,6 +18,14 @@ final class EmulatorManagerAppDelegate: NSObject, NSApplicationDelegate {
     private var statusTitleItem: NSMenuItem?
     private var startOrRestartItem: NSMenuItem?
     private var stopItem: NSMenuItem?
+    private var frontCameraMenu: NSMenu?
+    private var backCameraMenu: NSMenu?
+    private var microphoneMenu: NSMenu?
+    private var cameraDevices: [EmulatorCamera] = []
+    private var audioInputDevices: [EmulatorAudioInput] = []
+    private var frontCamera = "emulated"
+    private var backCamera = "emulated"
+    private var audioInputUID: String?
     private var statusTimer: Timer?
     private var pauseTimer: Timer?
     private var stopTimer: Timer?
@@ -25,7 +37,8 @@ final class EmulatorManagerAppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApplication.shared.setActivationPolicy(.accessory)
         do {
-            controller = EmulatorController(configuration: try EmulatorConfiguration(arguments: arguments))
+            loadMediaConfiguration()
+            controller = try makeController()
             registerIPCObservers()
             createStatusItem()
             startEmulator()
@@ -157,10 +170,14 @@ final class EmulatorManagerAppDelegate: NSObject, NSApplicationDelegate {
 
     private func createStatusItem() {
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
-        if let image = NSImage(systemSymbolName: "iphone.and.arrow.forward",
-                               accessibilityDescription: "MSA Emulator") {
+        let bundledImage = Bundle.main.url(forResource: "MSAMenuBarIcon", withExtension: "png")
+            .flatMap(NSImage.init(contentsOf:))
+        if let image = bundledImage ?? NSImage(systemSymbolName: "iphone.and.arrow.forward",
+                                               accessibilityDescription: "MSA Emulator") {
             image.isTemplate = true
+            image.size = NSSize(width: 22, height: 13)
             item.button?.image = image
+            item.button?.imagePosition = .imageOnly
         } else {
             item.button?.title = "A"
         }
@@ -184,6 +201,27 @@ final class EmulatorManagerAppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(stop)
 
         menu.addItem(.separator())
+        let frontCameraItem = NSMenuItem(title: "Front Camera", action: nil, keyEquivalent: "")
+        let frontMenu = NSMenu(title: "Front Camera")
+        frontCameraItem.submenu = frontMenu
+        menu.addItem(frontCameraItem)
+
+        let backCameraItem = NSMenuItem(title: "Back Camera", action: nil, keyEquivalent: "")
+        let backMenu = NSMenu(title: "Back Camera")
+        backCameraItem.submenu = backMenu
+        menu.addItem(backCameraItem)
+
+        let microphoneItem = NSMenuItem(title: "Microphone", action: nil, keyEquivalent: "")
+        let microphoneSubmenu = NSMenu(title: "Microphone")
+        microphoneItem.submenu = microphoneSubmenu
+        menu.addItem(microphoneItem)
+
+        let refreshDevices = NSMenuItem(title: "Refresh Media Devices", action: #selector(refreshMediaDevices),
+                                        keyEquivalent: "")
+        refreshDevices.target = self
+        menu.addItem(refreshDevices)
+
+        menu.addItem(.separator())
         let quit = NSMenuItem(title: "Quit MSA Emulator", action: #selector(NSApplication.terminate(_:)),
                               keyEquivalent: "q")
         quit.target = NSApp
@@ -194,9 +232,176 @@ final class EmulatorManagerAppDelegate: NSObject, NSApplicationDelegate {
         statusTitleItem = title
         startOrRestartItem = startOrRestart
         stopItem = stop
+        frontCameraMenu = frontMenu
+        backCameraMenu = backMenu
+        microphoneMenu = microphoneSubmenu
+        rebuildMediaMenus()
         statusTimer = Timer.scheduledTimer(timeInterval: 3, target: self,
                                            selector: #selector(checkEmulatorState),
                                            userInfo: nil, repeats: true)
+    }
+
+    private func loadMediaConfiguration() {
+        cameraDevices = EmulatorController.availableCameras(sdkRoot: arguments.sdkRoot)
+        audioInputDevices = EmulatorAudioInput.availableDevices()
+        let defaults = UserDefaults.standard
+        frontCamera = validCameraMode(defaults.string(forKey: cameraDefaultsKey(.front)))
+            ?? cameraDevices.first?.id ?? "emulated"
+        backCamera = validCameraMode(defaults.string(forKey: cameraDefaultsKey(.back))) ?? "emulated"
+        let savedAudioInputUID = defaults.string(forKey: audioInputDefaultsKey)
+        audioInputUID = validAudioInputUID(savedAudioInputUID) ?? EmulatorAudioInput.defaultDeviceUID()
+    }
+
+    private func validCameraMode(_ mode: String?) -> String? {
+        guard let mode else { return nil }
+        return mode == "emulated" || mode == "none" || cameraDevices.contains { $0.id == mode }
+            ? mode : nil
+    }
+
+    private func cameraDefaultsKey(_ position: CameraPosition) -> String {
+        "camera.\(position == .front ? "front" : "back").\(arguments.emulatorSerial)"
+    }
+
+    private var audioInputDefaultsKey: String { "audio.input.\(arguments.emulatorSerial)" }
+
+    private func validAudioInputUID(_ uid: String?) -> String? {
+        guard let uid, audioInputDevices.contains(where: { $0.uid == uid }) else { return nil }
+        return uid
+    }
+
+    private func makeController() throws -> EmulatorController {
+        let configuration = try EmulatorConfiguration(
+            sdkRoot: arguments.sdkRoot, serial: arguments.emulatorSerial,
+            avdName: arguments.avdName, writableSystem: arguments.writableSystem,
+            frontCamera: frontCamera, backCamera: backCamera, audioInputUID: audioInputUID
+        )
+        return EmulatorController(configuration: configuration)
+    }
+
+    private func rebuildCameraMenus() {
+        populateCameraMenu(frontCameraMenu, position: .front, selectedMode: frontCamera)
+        populateCameraMenu(backCameraMenu, position: .back, selectedMode: backCamera)
+    }
+
+    private func rebuildMediaMenus() {
+        rebuildCameraMenus()
+        guard let microphoneMenu else { return }
+        microphoneMenu.removeAllItems()
+        for device in audioInputDevices {
+            let item = NSMenuItem(title: device.name, action: #selector(selectAudioInput(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = device.uid
+            item.state = device.uid == audioInputUID ? .on : .off
+            microphoneMenu.addItem(item)
+        }
+        if audioInputDevices.isEmpty {
+            let item = NSMenuItem(title: "No Input Devices", action: nil, keyEquivalent: "")
+            item.isEnabled = false
+            microphoneMenu.addItem(item)
+        }
+    }
+
+    private func populateCameraMenu(_ menu: NSMenu?, position: CameraPosition, selectedMode: String) {
+        guard let menu else { return }
+        menu.removeAllItems()
+        addCameraMenuItem(title: "Emulated", mode: "emulated", position: position,
+                          selectedMode: selectedMode, to: menu)
+        addCameraMenuItem(title: "Disabled", mode: "none", position: position,
+                          selectedMode: selectedMode, to: menu)
+        if !cameraDevices.isEmpty { menu.addItem(.separator()) }
+        for camera in cameraDevices {
+            addCameraMenuItem(title: camera.name, mode: camera.id, position: position,
+                              selectedMode: selectedMode, to: menu)
+        }
+    }
+
+    private func addCameraMenuItem(title: String, mode: String, position: CameraPosition,
+                                   selectedMode: String, to menu: NSMenu) {
+        let item = NSMenuItem(title: title, action: #selector(selectCamera(_:)), keyEquivalent: "")
+        item.target = self
+        item.tag = position.rawValue
+        item.representedObject = mode
+        item.state = mode == selectedMode ? .on : .off
+        menu.addItem(item)
+    }
+
+    @objc private func refreshMediaDevices() {
+        guard !isTransitioning else { return }
+        let previousAudioInputUID = audioInputUID
+        cameraDevices = EmulatorController.availableCameras(sdkRoot: arguments.sdkRoot)
+        audioInputDevices = EmulatorAudioInput.availableDevices()
+        if validAudioInputUID(audioInputUID) == nil {
+            audioInputUID = validAudioInputUID(EmulatorAudioInput.defaultDeviceUID())
+            if let audioInputUID {
+                UserDefaults.standard.set(audioInputUID, forKey: audioInputDefaultsKey)
+            } else {
+                UserDefaults.standard.removeObject(forKey: audioInputDefaultsKey)
+            }
+        }
+        rebuildMediaMenus()
+        if audioInputUID != previousAudioInputUID { applyMediaConfiguration() }
+    }
+
+    @objc private func selectCamera(_ sender: NSMenuItem) {
+        guard !isTransitioning,
+              let position = CameraPosition(rawValue: sender.tag),
+              let mode = sender.representedObject as? String else { return }
+        let previous = position == .front ? frontCamera : backCamera
+        guard mode != previous else { return }
+        if position == .front { frontCamera = mode } else { backCamera = mode }
+        UserDefaults.standard.set(mode, forKey: cameraDefaultsKey(position))
+        rebuildCameraMenus()
+        applyMediaConfiguration()
+    }
+
+    @objc private func selectAudioInput(_ sender: NSMenuItem) {
+        guard !isTransitioning, let uid = sender.representedObject as? String,
+              uid != audioInputUID else { return }
+        let alert = NSAlert()
+        alert.messageText = "Change the Default Microphone?"
+        alert.informativeText = "Selecting \(sender.title) will change the default microphone for all apps on this Mac."
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: "Change Default Microphone")
+        alert.addButton(withTitle: "Cancel")
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        audioInputUID = uid
+        UserDefaults.standard.set(uid, forKey: audioInputDefaultsKey)
+        rebuildMediaMenus()
+        applyMediaConfiguration()
+    }
+
+    private func applyMediaConfiguration() {
+        guard let previousController = controller else { return }
+        do {
+            let replacement = try makeController()
+            let wasRunning = previousController.isRunning() || previousController.isPaused()
+            controller = replacement
+            guard wasRunning else { return }
+            cancelIdleTimers()
+            isTransitioning = true
+            updateMenu(status: "\(arguments.avdName) — Applying devices…",
+                       actionEnabled: false, running: true)
+            Task {
+                do {
+                    try await Task.detached {
+                        try previousController.stop()
+                        try replacement.ensureRunning()
+                    }.value
+                    isTransitioning = false
+                    updateMenu(status: "\(arguments.avdName) — Running", actionEnabled: true, running: true)
+                    respondToPendingRequests()
+                    scheduleIdleActionsIfNeeded()
+                } catch {
+                    isTransitioning = false
+                    updateMenu(status: "\(arguments.avdName) — Error", actionEnabled: true,
+                               running: replacement.isRunning())
+                    respondToPendingRequests(error: error)
+                    presentError(error)
+                }
+            }
+        } catch {
+            presentError(error)
+        }
     }
 
     private func startEmulator() {

@@ -1,5 +1,22 @@
 import Foundation
 
+struct EmulatorCamera: Equatable, Sendable {
+    let id: String
+    let name: String
+
+    static func parseList(_ output: String) -> [EmulatorCamera] {
+        output.split(whereSeparator: \.isNewline).compactMap { line in
+            let text = String(line)
+            guard let idStart = text.range(of: "Camera '")?.upperBound,
+                  let idEnd = text[idStart...].range(of: "' is connected to device '") else { return nil }
+            let nameStart = idEnd.upperBound
+            guard let nameEnd = text[nameStart...].range(of: "' on channel") else { return nil }
+            return EmulatorCamera(id: String(text[idStart..<idEnd.lowerBound]),
+                                  name: String(text[nameStart..<nameEnd.lowerBound]))
+        }
+    }
+}
+
 struct EmulatorConfiguration: Sendable {
     enum ConfigurationError: LocalizedError {
         case invalidSerial(String)
@@ -17,8 +34,13 @@ struct EmulatorConfiguration: Sendable {
     let avdName: String
     let writableSystem: Bool
     let port: Int
+    let frontCamera: String
+    let backCamera: String
+    let audioInputUID: String?
 
-    init(sdkRoot: String, serial: String, avdName: String, writableSystem: Bool) throws {
+    init(sdkRoot: String, serial: String, avdName: String, writableSystem: Bool,
+         frontCamera: String = "emulated", backCamera: String = "emulated",
+         audioInputUID: String? = nil) throws {
         guard serial.hasPrefix("emulator-"),
               let port = Int(serial.dropFirst("emulator-".count)),
               (5554...5682).contains(port), port.isMultiple(of: 2) else {
@@ -29,6 +51,9 @@ struct EmulatorConfiguration: Sendable {
         self.avdName = avdName
         self.writableSystem = writableSystem
         self.port = port
+        self.frontCamera = frontCamera
+        self.backCamera = backCamera
+        self.audioInputUID = audioInputUID
     }
 
     init(arguments: Arguments) throws {
@@ -41,7 +66,9 @@ struct EmulatorConfiguration: Sendable {
     func launchArguments(coldBoot: Bool) -> [String] {
         var result = ["-avd", avdName, "-port", String(port)]
         if writableSystem { result.append("-writable-system") }
-        result += ["-no-window", "-no-boot-anim", "-gpu", "host"]
+        result += ["-no-window", "-no-boot-anim", "-gpu", "host",
+                   "-audio", "coreaudio", "-allow-host-audio", "-camera-front", frontCamera,
+                   "-camera-back", backCamera]
         if coldBoot { result.append("-no-snapshot-load") }
         return result
     }
@@ -92,6 +119,25 @@ final class EmulatorController: @unchecked Sendable {
     private var launchedProcess: Process?
 
     init(configuration: EmulatorConfiguration) { self.configuration = configuration }
+
+    static func availableCameras(sdkRoot: String) -> [EmulatorCamera] {
+        let emulatorURL = URL(fileURLWithPath: sdkRoot).appendingPathComponent("emulator/emulator")
+        guard FileManager.default.isExecutableFile(atPath: emulatorURL.path) else { return [] }
+        let process = Process()
+        let pipe = Pipe()
+        process.executableURL = emulatorURL
+        process.arguments = ["-webcam-list"]
+        process.standardOutput = pipe
+        process.standardError = pipe
+        do {
+            try process.run()
+            process.waitUntilExit()
+            let output = String(decoding: pipe.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+            return process.terminationStatus == 0 ? EmulatorCamera.parseList(output) : []
+        } catch {
+            return []
+        }
+    }
 
     func isRunning() -> Bool {
         guard FileManager.default.isExecutableFile(atPath: configuration.adbURL.path) else { return false }
@@ -209,6 +255,9 @@ final class EmulatorController: @unchecked Sendable {
             throw ControllerError.executableMissing(configuration.emulatorURL.path)
         }
         let process = Process()
+        if let audioInputUID = configuration.audioInputUID {
+            try EmulatorAudioInput.selectDevice(uid: audioInputUID)
+        }
         process.executableURL = configuration.emulatorURL
         process.arguments = configuration.launchArguments(coldBoot: coldBoot)
         process.standardOutput = FileHandle.nullDevice
