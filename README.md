@@ -167,17 +167,20 @@ ANDROID_SERIAL=emulator-5558 scripts/create-macos-app.sh --replace com.android.v
 The generated `.app` embeds the package name along with the emulator configuration that was
 active for `ANDROID_SERIAL` at creation time — it does not bundle the APK or any Google Play
 code. A companion `MSA Emulator.app` is created in the same output directory at the same
-time. Opening the app's `.app` auto-starts the emulator headlessly if it isn't running
-already, then opens both the manager app and the target app once boot completes.
+time. Opening the app's `.app` asks the manager to start the emulator headlessly if needed,
+then opens the target app once boot completes.
 
 ```sh
 open "$HOME/Applications/Google Play Store.app"
 ```
 
 `MSA Emulator.app` runs as a separate menu-bar process from any app-specific `.app`. Its
-menu lets you start, restart, and stop the emulator; it stays resident even after every
-Android app window is closed, so you can restart the emulator with **Start Emulator** at any
-time.
+menu lets you start, restart, and stop the emulator, and it is the only process that controls
+the emulator lifecycle. After the last Android app window closes, the manager pauses the VM
+after 30 seconds to reduce idle CPU usage. After five minutes it
+shuts down the emulator and saves its Quick Boot state while the menu-bar app remains available.
+The menu shows the idle, paused, snapshot-saving, and stopped states. If a saved-state boot
+fails, the manager automatically retries once with a cold boot.
 
 You can also create or update just the manager app:
 

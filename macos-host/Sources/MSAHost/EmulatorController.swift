@@ -38,10 +38,11 @@ struct EmulatorConfiguration: Sendable {
 
     var adbURL: URL { URL(fileURLWithPath: sdkRoot).appendingPathComponent("platform-tools/adb") }
     var emulatorURL: URL { URL(fileURLWithPath: sdkRoot).appendingPathComponent("emulator/emulator") }
-    var launchArguments: [String] {
+    func launchArguments(coldBoot: Bool) -> [String] {
         var result = ["-avd", avdName, "-port", String(port)]
         if writableSystem { result.append("-writable-system") }
-        result += ["-no-window", "-no-snapshot", "-no-boot-anim", "-gpu", "host"]
+        result += ["-no-window", "-no-boot-anim", "-gpu", "host"]
+        if coldBoot { result.append("-no-snapshot-load") }
         return result
     }
 }
@@ -57,20 +58,30 @@ enum EmulatorState {
         return state == "device" || state == "offline"
     }
 
+    static func isPaused(output: String, terminationStatus: Int32) -> Bool {
+        terminationStatus == 0 && output.contains("virtual device is stopped")
+    }
+
 }
 
 final class EmulatorController: @unchecked Sendable {
     enum ControllerError: LocalizedError {
         case executableMissing(String)
         case commandFailed(String, String)
+        case startFailed
         case startTimedOut
+        case pauseTimedOut
+        case resumeTimedOut
         case stopTimedOut
 
         var errorDescription: String? {
             switch self {
             case .executableMissing(let path): return "Required executable was not found: \(path)"
             case .commandFailed(let command, let output): return "\(command) failed: \(output)"
+            case .startFailed: return "Android Emulator exited before it finished starting."
             case .startTimedOut: return "Android Emulator did not finish starting within 120 seconds."
+            case .pauseTimedOut: return "Android Emulator did not pause within 10 seconds."
+            case .resumeTimedOut: return "Android Emulator did not resume within 30 seconds."
             case .stopTimedOut: return "Android Emulator did not stop within 30 seconds."
             }
         }
@@ -88,11 +99,32 @@ final class EmulatorController: @unchecked Sendable {
         return EmulatorState.isRunning(output: result.output, terminationStatus: result.status)
     }
 
+    func isPaused() -> Bool {
+        guard FileManager.default.isExecutableFile(atPath: configuration.adbURL.path) else { return false }
+        let result = run(configuration.adbURL, ["-s", configuration.serial, "emu", "avd", "status"])
+        return EmulatorState.isPaused(output: result.output, terminationStatus: result.status)
+    }
+
     func ensureRunning() throws {
         guard FileManager.default.isExecutableFile(atPath: configuration.adbURL.path) else {
             throw ControllerError.executableMissing(configuration.adbURL.path)
         }
-        if !isPresent() { try launchEmulator() }
+        do {
+            try ensureRunning(coldBoot: false)
+        } catch ControllerError.startFailed {
+            try retryWithColdBoot()
+        } catch ControllerError.startTimedOut {
+            try retryWithColdBoot()
+        }
+    }
+
+    private func retryWithColdBoot() throws {
+        try stop()
+        try ensureRunning(coldBoot: true)
+    }
+
+    private func ensureRunning(coldBoot: Bool) throws {
+        if !isPresent() { try launchEmulator(coldBoot: coldBoot) }
 
         let deadline = Date().addingTimeInterval(120)
         while Date() < deadline {
@@ -104,6 +136,10 @@ final class EmulatorController: @unchecked Sendable {
                     return
                 }
             }
+            let exited = processLock.withLock {
+                launchedProcess.map { !$0.isRunning } ?? false
+            }
+            if exited && !isPresent() { throw ControllerError.startFailed }
             Thread.sleep(forTimeInterval: 1)
         }
         throw ControllerError.startTimedOut
@@ -128,18 +164,53 @@ final class EmulatorController: @unchecked Sendable {
         throw ControllerError.stopTimedOut
     }
 
+    func pause() throws {
+        guard isPresent(), !isPaused() else { return }
+        let result = run(configuration.adbURL, ["-s", configuration.serial, "emu", "avd", "stop"])
+        guard result.status == 0 else {
+            throw ControllerError.commandFailed("adb emu avd stop", result.output)
+        }
+        let deadline = Date().addingTimeInterval(10)
+        while Date() < deadline {
+            if isPaused() { return }
+            Thread.sleep(forTimeInterval: 0.25)
+        }
+        throw ControllerError.pauseTimedOut
+    }
+
+    func resume() throws {
+        guard isPresent() else {
+            try ensureRunning()
+            return
+        }
+        guard isPaused() else { return }
+        let result = run(configuration.adbURL, ["-s", configuration.serial, "emu", "avd", "start"])
+        guard result.status == 0 else {
+            throw ControllerError.commandFailed("adb emu avd start", result.output)
+        }
+        let deadline = Date().addingTimeInterval(30)
+        while Date() < deadline {
+            if !isPaused(), isRunning() {
+                try configureForward()
+                return
+            }
+            Thread.sleep(forTimeInterval: 0.25)
+        }
+        throw ControllerError.resumeTimedOut
+    }
+
     func restart() throws {
         try stop()
         try ensureRunning()
     }
 
-    private func launchEmulator() throws {
+    private func launchEmulator(coldBoot: Bool) throws {
         guard FileManager.default.isExecutableFile(atPath: configuration.emulatorURL.path) else {
             throw ControllerError.executableMissing(configuration.emulatorURL.path)
         }
         let process = Process()
         process.executableURL = configuration.emulatorURL
-        process.arguments = configuration.launchArguments
+        process.arguments = configuration.launchArguments(coldBoot: coldBoot)
         process.standardOutput = FileHandle.nullDevice
         process.standardError = FileHandle.nullDevice
         try process.run()

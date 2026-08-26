@@ -2,13 +2,22 @@ import AppKit
 
 @MainActor
 final class EmulatorManagerAppDelegate: NSObject, NSApplicationDelegate {
+    private static let pauseDelay: TimeInterval = 30
+    private static let stopDelay: TimeInterval = 5 * 60
+    private static let clientLeaseDuration: TimeInterval = 90
+
     private let arguments: Arguments
     private var controller: EmulatorController?
+    private var clients = EmulatorClientRegistry(leaseDuration: clientLeaseDuration)
+    private var pendingRequests: [String: String] = [:]
     private var statusItem: NSStatusItem?
     private var statusTitleItem: NSMenuItem?
     private var startOrRestartItem: NSMenuItem?
     private var stopItem: NSMenuItem?
     private var statusTimer: Timer?
+    private var pauseTimer: Timer?
+    private var stopTimer: Timer?
+    private var idleStartedAt: Date?
     private var isTransitioning = false
 
     init(arguments: Arguments) { self.arguments = arguments }
@@ -17,6 +26,7 @@ final class EmulatorManagerAppDelegate: NSObject, NSApplicationDelegate {
         NSApplication.shared.setActivationPolicy(.accessory)
         do {
             controller = EmulatorController(configuration: try EmulatorConfiguration(arguments: arguments))
+            registerIPCObservers()
             createStatusItem()
             startEmulator()
         } catch {
@@ -25,7 +35,11 @@ final class EmulatorManagerAppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
-        if controller?.isRunning() == false { startEmulator() }
+        if controller?.isPaused() == true {
+            resumeEmulator()
+        } else if controller?.isRunning() == false {
+            startEmulator()
+        }
         return true
     }
 
@@ -47,6 +61,98 @@ final class EmulatorManagerAppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationWillTerminate(_ notification: Notification) {
         statusTimer?.invalidate()
+        cancelIdleTimers()
+        DistributedNotificationCenter.default().removeObserver(self)
+    }
+
+    private func registerIPCObservers() {
+        let center = DistributedNotificationCenter.default()
+        center.addObserver(self, selector: #selector(acquireEmulator(_:)),
+                           name: EmulatorManagerIPC.acquire, object: nil)
+        center.addObserver(self, selector: #selector(receiveHeartbeat(_:)),
+                           name: EmulatorManagerIPC.heartbeat, object: nil)
+        center.addObserver(self, selector: #selector(releaseEmulator(_:)),
+                           name: EmulatorManagerIPC.release, object: nil)
+    }
+
+    @objc private func acquireEmulator(_ notification: Notification) {
+        guard let values = clientValues(from: notification),
+              let requestID = notification.userInfo?[EmulatorManagerIPC.requestIDKey] as? String else { return }
+        clients.touch(values.clientID)
+        pendingRequests[requestID] = values.clientID
+        cancelIdleTimers()
+        guard !isTransitioning else { return }
+        if controller?.isPaused() == true {
+            resumeEmulator()
+        } else if controller?.isRunning() == true {
+            respondToPendingRequests()
+        } else {
+            startEmulator()
+        }
+    }
+
+    @objc private func receiveHeartbeat(_ notification: Notification) {
+        guard let values = clientValues(from: notification), clients.contains(values.clientID) else { return }
+        clients.touch(values.clientID)
+    }
+
+    @objc private func releaseEmulator(_ notification: Notification) {
+        guard let values = clientValues(from: notification) else { return }
+        clients.release(values.clientID)
+        pendingRequests = pendingRequests.filter { $0.value != values.clientID }
+        scheduleIdleActionsIfNeeded()
+    }
+
+    private func clientValues(from notification: Notification) -> (clientID: String, serial: String)? {
+        guard let userInfo = notification.userInfo,
+              let serial = userInfo[EmulatorManagerIPC.serialKey] as? String,
+              serial == arguments.emulatorSerial,
+              let clientID = userInfo[EmulatorManagerIPC.clientIDKey] as? String else { return nil }
+        return (clientID, serial)
+    }
+
+    private func respondToPendingRequests(error: Error? = nil) {
+        let center = DistributedNotificationCenter.default()
+        for requestID in pendingRequests.keys {
+            var userInfo = [
+                EmulatorManagerIPC.serialKey: arguments.emulatorSerial,
+                EmulatorManagerIPC.requestIDKey: requestID,
+            ]
+            if let error { userInfo[EmulatorManagerIPC.errorKey] = error.localizedDescription }
+            center.postNotificationName(EmulatorManagerIPC.response, object: nil,
+                                        userInfo: userInfo, deliverImmediately: true)
+        }
+        pendingRequests.removeAll()
+    }
+
+    private func scheduleIdleActionsIfNeeded() {
+        guard clients.isEmpty, !isTransitioning, controller?.isRunning() == true else { return }
+        guard idleStartedAt == nil else { return }
+        idleStartedAt = Date()
+        pauseTimer = Timer.scheduledTimer(timeInterval: Self.pauseDelay, target: self,
+                                          selector: #selector(pauseTimeoutElapsed),
+                                          userInfo: nil, repeats: false)
+        stopTimer = Timer.scheduledTimer(timeInterval: Self.stopDelay, target: self,
+                                         selector: #selector(stopTimeoutElapsed),
+                                         userInfo: nil, repeats: false)
+    }
+
+    private func cancelIdleTimers() {
+        pauseTimer?.invalidate()
+        stopTimer?.invalidate()
+        pauseTimer = nil
+        stopTimer = nil
+        idleStartedAt = nil
+    }
+
+    @objc private func pauseTimeoutElapsed() {
+        pauseTimer = nil
+        pauseEmulator()
+    }
+
+    @objc private func stopTimeoutElapsed() {
+        stopTimer = nil
+        stopEmulator()
     }
 
     private func createStatusItem() {
@@ -95,6 +201,7 @@ final class EmulatorManagerAppDelegate: NSObject, NSApplicationDelegate {
 
     private func startEmulator() {
         guard !isTransitioning, let controller else { return }
+        cancelIdleTimers()
         isTransitioning = true
         updateMenu(status: "\(arguments.avdName) — Starting…", actionEnabled: false, running: false)
         Task {
@@ -102,9 +209,12 @@ final class EmulatorManagerAppDelegate: NSObject, NSApplicationDelegate {
                 try await Task.detached { try controller.ensureRunning() }.value
                 isTransitioning = false
                 updateMenu(status: "\(arguments.avdName) — Running", actionEnabled: true, running: true)
+                respondToPendingRequests()
+                scheduleIdleActionsIfNeeded()
             } catch {
                 isTransitioning = false
                 updateMenu(status: "\(arguments.avdName) — Error", actionEnabled: true, running: false)
+                respondToPendingRequests(error: error)
                 presentError(error)
             }
         }
@@ -112,9 +222,70 @@ final class EmulatorManagerAppDelegate: NSObject, NSApplicationDelegate {
 
     private func updateMenu(status: String, actionEnabled: Bool, running: Bool) {
         statusTitleItem?.title = status
+        statusItem?.button?.toolTip = status
         startOrRestartItem?.title = running ? "Restart Emulator" : "Start Emulator"
         startOrRestartItem?.isEnabled = actionEnabled
         stopItem?.isEnabled = actionEnabled && running
+    }
+
+    private func pauseEmulator() {
+        guard !isTransitioning, clients.isEmpty, let controller else { return }
+        isTransitioning = true
+        updateMenu(status: "\(arguments.avdName) — Pausing…", actionEnabled: false, running: true)
+        Task {
+            do {
+                try await Task.detached { try controller.pause() }.value
+                isTransitioning = false
+                if clients.isEmpty {
+                    updateIdleMenu(paused: true)
+                } else {
+                    resumeEmulator()
+                }
+            } catch {
+                isTransitioning = false
+                updateMenu(status: "\(arguments.avdName) — Error", actionEnabled: true, running: true)
+                presentError(error)
+            }
+        }
+    }
+
+    private func resumeEmulator() {
+        guard !isTransitioning, let controller else { return }
+        isTransitioning = true
+        updateMenu(status: "\(arguments.avdName) — Resuming…", actionEnabled: false, running: true)
+        Task {
+            do {
+                try await Task.detached { try controller.resume() }.value
+                isTransitioning = false
+                updateMenu(status: "\(arguments.avdName) — Running", actionEnabled: true, running: true)
+                respondToPendingRequests()
+                scheduleIdleActionsIfNeeded()
+            } catch {
+                isTransitioning = false
+                updateMenu(status: "\(arguments.avdName) — Error", actionEnabled: true,
+                           running: controller.isRunning())
+                respondToPendingRequests(error: error)
+                presentError(error)
+            }
+        }
+    }
+
+    private func updateIdleMenu(paused: Bool) {
+        guard let idleStartedAt else {
+            updateMenu(status: "\(arguments.avdName) — \(paused ? "Paused" : "Running")",
+                       actionEnabled: true, running: true)
+            return
+        }
+        let elapsed = Date().timeIntervalSince(idleStartedAt)
+        if paused {
+            let seconds = max(0, Int((Self.stopDelay - elapsed).rounded(.up)))
+            updateMenu(status: "\(arguments.avdName) — Paused; snapshot shutdown in \(seconds / 60)m \(seconds % 60)s",
+                       actionEnabled: true, running: true)
+        } else {
+            let seconds = max(0, Int((Self.pauseDelay - elapsed).rounded(.up)))
+            updateMenu(status: "\(arguments.avdName) — Idle; pausing in \(seconds)s",
+                       actionEnabled: true, running: true)
+        }
     }
 
     @objc private func startOrRestartEmulator() {
@@ -123,6 +294,7 @@ final class EmulatorManagerAppDelegate: NSObject, NSApplicationDelegate {
             startEmulator()
             return
         }
+        cancelIdleTimers()
         isTransitioning = true
         updateMenu(status: "\(arguments.avdName) — Restarting…", actionEnabled: false, running: true)
         Task {
@@ -130,10 +302,13 @@ final class EmulatorManagerAppDelegate: NSObject, NSApplicationDelegate {
                 try await Task.detached { try controller.restart() }.value
                 isTransitioning = false
                 updateMenu(status: "\(arguments.avdName) — Running", actionEnabled: true, running: true)
+                respondToPendingRequests()
+                scheduleIdleActionsIfNeeded()
             } catch {
                 isTransitioning = false
                 let running = controller.isRunning()
                 updateMenu(status: "\(arguments.avdName) — Error", actionEnabled: true, running: running)
+                respondToPendingRequests(error: error)
                 presentError(error)
             }
         }
@@ -141,13 +316,16 @@ final class EmulatorManagerAppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func stopEmulator() {
         guard !isTransitioning, let controller else { return }
+        cancelIdleTimers()
         isTransitioning = true
-        updateMenu(status: "\(arguments.avdName) — Stopping…", actionEnabled: false, running: true)
+        updateMenu(status: "\(arguments.avdName) — Saving snapshot and stopping…",
+                   actionEnabled: false, running: true)
         Task {
             do {
                 try await Task.detached { try controller.stop() }.value
                 isTransitioning = false
                 updateMenu(status: "\(arguments.avdName) — Stopped", actionEnabled: true, running: false)
+                if !pendingRequests.isEmpty { startEmulator() }
             } catch {
                 isTransitioning = false
                 let running = controller.isRunning()
@@ -159,10 +337,19 @@ final class EmulatorManagerAppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func checkEmulatorState() {
         guard !isTransitioning, let controller else { return }
+        let hadClients = !clients.isEmpty
+        clients.removeExpired()
+        if hadClients && clients.isEmpty { scheduleIdleActionsIfNeeded() }
         Task {
-            let running = await Task.detached { controller.isRunning() }.value
-            updateMenu(status: "\(arguments.avdName) — \(running ? "Running" : "Stopped")",
-                       actionEnabled: true, running: running)
+            let state = await Task.detached { (controller.isRunning(), controller.isPaused()) }.value
+            if state.1 {
+                updateIdleMenu(paused: true)
+            } else if state.0, clients.isEmpty, idleStartedAt != nil {
+                updateIdleMenu(paused: false)
+            } else {
+                updateMenu(status: "\(arguments.avdName) — \(state.0 ? "Running" : "Stopped")",
+                           actionEnabled: true, running: state.0)
+            }
         }
     }
 

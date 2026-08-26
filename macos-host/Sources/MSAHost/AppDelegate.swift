@@ -3,22 +3,37 @@ import Foundation
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
+    enum ManagerError: LocalizedError {
+        case appMissing(String)
+        case requestTimedOut
+        case unavailable(String)
+
+        var errorDescription: String? {
+            switch self {
+            case .appMissing(let path): return "MSA Emulator.app was not found at \(path)"
+            case .requestTimedOut: return "MSA Emulator did not become ready in time."
+            case .unavailable(let message): return message
+            }
+        }
+    }
+
     private let arguments: Arguments
+    private let emulatorClientID = UUID().uuidString
     private var window: NSWindow?
     private var connection: SocketConnection?
     private var androidView: AndroidView?
-    private var emulatorController: EmulatorController?
+    private var managerResponses: [String: String] = [:]
+    private var heartbeatTimer: Timer?
     private var isTransitioning = false
 
     init(arguments: Arguments) { self.arguments = arguments }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        do {
-            emulatorController = EmulatorController(configuration: try EmulatorConfiguration(arguments: arguments))
-            ensureEmulatorAndOpenWindow()
-        } catch {
-            presentFatalError(error)
-        }
+        DistributedNotificationCenter.default().addObserver(
+            self, selector: #selector(handleManagerResponse),
+            name: EmulatorManagerIPC.response, object: nil
+        )
+        ensureEmulatorAndOpenWindow()
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
@@ -38,18 +53,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         connection = nil
         androidView = nil
         window = nil
+        releaseEmulator()
     }
     func applicationWillTerminate(_ notification: Notification) {
         connection?.close()
+        releaseEmulator()
+        DistributedNotificationCenter.default().removeObserver(self)
     }
 
     private func ensureEmulatorAndOpenWindow() {
-        guard !isTransitioning, let emulatorController else { return }
+        guard !isTransitioning else { return }
         isTransitioning = true
         Task {
             do {
-                try await Task.detached { try emulatorController.ensureRunning() }.value
-                launchEmulatorManager()
+                try launchEmulatorManager()
+                try await acquireEmulator()
                 try await openAndroidWindow()
                 isTransitioning = false
             } catch {
@@ -59,14 +77,77 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         }
     }
 
-    private func launchEmulatorManager() {
-        let managerURL = Bundle.main.bundleURL.deletingLastPathComponent()
+    private func launchEmulatorManager() throws {
+        let adjacentURL = Bundle.main.bundleURL.deletingLastPathComponent()
             .appendingPathComponent("MSA Emulator.app")
-        guard FileManager.default.fileExists(atPath: managerURL.path) else { return }
+        let installedURL = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Applications/MSA Emulator.app")
+        let managerURL = [adjacentURL, installedURL].first {
+            FileManager.default.fileExists(atPath: $0.path)
+        }
+        guard let managerURL else {
+            throw ManagerError.appMissing(adjacentURL.path)
+        }
         NSWorkspace.shared.openApplication(
             at: managerURL,
             configuration: NSWorkspace.OpenConfiguration()
         )
+    }
+
+    private func acquireEmulator() async throws {
+        let requestID = UUID().uuidString
+        let center = DistributedNotificationCenter.default()
+        let userInfo = [
+            EmulatorManagerIPC.serialKey: arguments.emulatorSerial,
+            EmulatorManagerIPC.clientIDKey: emulatorClientID,
+            EmulatorManagerIPC.requestIDKey: requestID,
+        ]
+        for _ in 0..<250 {
+            center.postNotificationName(EmulatorManagerIPC.acquire, object: nil,
+                                        userInfo: userInfo, deliverImmediately: true)
+            try await Task.sleep(for: .seconds(1))
+            if let response = managerResponses.removeValue(forKey: requestID) {
+                if !response.isEmpty { throw ManagerError.unavailable(response) }
+                startHeartbeat()
+                return
+            }
+        }
+        throw ManagerError.requestTimedOut
+    }
+
+    private func startHeartbeat() {
+        heartbeatTimer?.invalidate()
+        heartbeatTimer = Timer.scheduledTimer(timeInterval: 30, target: self,
+                                              selector: #selector(sendHeartbeat),
+                                              userInfo: nil, repeats: true)
+    }
+
+    @objc private func sendHeartbeat() {
+        postClientNotification(EmulatorManagerIPC.heartbeat)
+    }
+
+    private func releaseEmulator() {
+        heartbeatTimer?.invalidate()
+        heartbeatTimer = nil
+        postClientNotification(EmulatorManagerIPC.release)
+    }
+
+    private func postClientNotification(_ name: Notification.Name) {
+        DistributedNotificationCenter.default().postNotificationName(
+            name, object: nil,
+            userInfo: [
+                EmulatorManagerIPC.serialKey: arguments.emulatorSerial,
+                EmulatorManagerIPC.clientIDKey: emulatorClientID,
+            ],
+            deliverImmediately: true
+        )
+    }
+
+    @objc private func handleManagerResponse(_ notification: Notification) {
+        guard let userInfo = notification.userInfo,
+              userInfo[EmulatorManagerIPC.serialKey] as? String == arguments.emulatorSerial,
+              let requestID = userInfo[EmulatorManagerIPC.requestIDKey] as? String else { return }
+        managerResponses[requestID] = userInfo[EmulatorManagerIPC.errorKey] as? String ?? ""
     }
 
     private func openAndroidWindow() async throws {
