@@ -2,7 +2,7 @@
 
 # macOS Subsystem for Android (MSA)
 
-macOS Subsystem for Android (MSA) runs the official Android Emulator as a VM backend and
+Inspired by [WSA(Windows Subsystem for Android)](https://support.microsoft.com/en-US/Windows/Apps/MobileApps/apps-from-the-amazon-appstore), macOS Subsystem for Android (MSA) runs the official Android Emulator as a VM backend and
 gives each Android app its own native macOS `NSWindow`. There is no full AOSP checkout or
 build: a single platform-signed privileged host agent is added on top of the stock Android 16
 AOSP `userdebug` emulator image.
