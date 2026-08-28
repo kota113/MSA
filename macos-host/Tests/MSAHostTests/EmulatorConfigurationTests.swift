@@ -1,5 +1,5 @@
 import XCTest
-@testable import MSAHost
+@testable import MSAEmulatorManager
 
 final class EmulatorConfigurationTests: XCTestCase {
     func testQuickBootLaunchArgumentsUseSerialPortAndHeadlessMode() throws {
@@ -104,6 +104,46 @@ final class EmulatorConfigurationTests: XCTestCase {
         ))
         XCTAssertFalse(EmulatorState.isPaused(
             output: "virtual device is stopped\nKO\n", terminationStatus: 1
+        ))
+    }
+
+    func testRequestedLocationPermissionIsDetectedFromManifestSection() {
+        let output = """
+          requested permissions:
+            android.permission.INTERNET
+            android.permission.ACCESS_FINE_LOCATION
+          install permissions:
+            android.permission.INTERNET: granted=true
+        """
+
+        XCTAssertTrue(AndroidManifestPermissions.hasLocationPermission(in: output))
+    }
+
+    func testGrantedLocationPermissionWithoutManifestDeclarationIsIgnored() {
+        let output = """
+          requested permissions:
+            android.permission.INTERNET
+          runtime permissions:
+            android.permission.ACCESS_COARSE_LOCATION: granted=true
+        """
+
+        XCTAssertFalse(AndroidManifestPermissions.hasLocationPermission(in: output))
+    }
+
+    func testLocationArgumentsUseLongitudeLatitudeOrderAndPOSIXDecimalSeparator() throws {
+        XCTAssertEqual(try EmulatorLocationCommand.arguments(
+            serial: "emulator-5558", latitude: 35.6812, longitude: 139.7671, altitude: 10.5
+        ), [
+            "-s", "emulator-5558", "emu", "geo", "fix", "139.76710000", "35.68120000", "10.500",
+        ])
+    }
+
+    func testInvalidLocationCoordinateIsRejected() {
+        XCTAssertThrowsError(try EmulatorLocationCommand.arguments(
+            serial: "emulator-5558", latitude: 91, longitude: 139, altitude: 0
+        ))
+        XCTAssertThrowsError(try EmulatorLocationCommand.arguments(
+            serial: "emulator-5558", latitude: 35, longitude: .infinity, altitude: 0
         ))
     }
 

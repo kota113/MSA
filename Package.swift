@@ -4,22 +4,39 @@ import PackageDescription
 let package = Package(
     name: "MSAHost",
     platforms: [.macOS(.v14)],
-    products: [.executable(name: "MSAHost", targets: ["MSAHost"])],
+    products: [
+        .executable(name: "MSAAppHost", targets: ["MSAAppHost"]),
+        .executable(name: "MSAEmulatorManager", targets: ["MSAEmulatorManager"]),
+    ],
     targets: [
+        .target(
+            name: "MSAHostCore",
+            path: "macos-host/Sources/MSAHostCore"
+        ),
         .executableTarget(
-            name: "MSAHost",
-            path: "macos-host/Sources/MSAHost",
+            name: "MSAAppHost",
+            dependencies: ["MSAHostCore"],
+            path: "macos-host/Sources/MSAAppHost",
             linkerSettings: [
                 .linkedFramework("AppKit"),
-                .linkedFramework("AVFoundation"),
-                .linkedFramework("CoreAudio"),
                 .linkedFramework("CoreMedia"),
                 .linkedFramework("VideoToolbox"),
             ]
         ),
+        .executableTarget(
+            name: "MSAEmulatorManager",
+            dependencies: ["MSAHostCore"],
+            path: "macos-host/Sources/MSAEmulatorManager",
+            linkerSettings: [
+                .linkedFramework("AppKit"),
+                .linkedFramework("AVFoundation"),
+                .linkedFramework("CoreAudio"),
+                .linkedFramework("CoreLocation"),
+            ]
+        ),
         .testTarget(
             name: "MSAHostTests",
-            dependencies: ["MSAHost"],
+            dependencies: ["MSAHostCore", "MSAAppHost", "MSAEmulatorManager"],
             path: "macos-host/Tests/MSAHostTests"
         ),
     ]

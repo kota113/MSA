@@ -1,5 +1,6 @@
 import AppKit
 import Foundation
+import MSAHostCore
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
@@ -144,6 +145,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         let userInfo = [
             EmulatorManagerIPC.serialKey: arguments.emulatorSerial,
             EmulatorManagerIPC.clientIDKey: emulatorClientID,
+            EmulatorManagerIPC.packageNameKey: arguments.packageName,
             EmulatorManagerIPC.requestIDKey: requestID,
         ]
         for _ in 0..<250 {

@@ -64,6 +64,7 @@ adb_cmd shell cmd role add-role-holder --user 0 "$PROFILE" "$PACKAGE" 0
 adb_cmd reboot
 wait_boot
 adb_cmd forward tcp:27183 tcp:27183
+adb_cmd forward tcp:27184 tcp:27184
 
 adb_cmd shell pm path "$PACKAGE"
 adb_cmd shell cmd companiondevice list 0

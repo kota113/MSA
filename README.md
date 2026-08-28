@@ -150,6 +150,12 @@ Finder or Spotlight. The Android display name is read from the APK, and the bund
 to `~/Applications` by default. Icons are rendered from Android's `PackageManager` to PNG and
 converted to `.icns`, so XML adaptive icons, vector drawables, and plain image icons all work.
 
+Once the current Android agent and `MSA Emulator.app` are installed, newly installed launchable
+Android packages are converted automatically. The agent keeps installation events across reboots,
+and the manager acknowledges each event only after the `.app` has been signed and placed beside
+the manager app. Existing bundles for the same package are replaced. The generated app contains
+the smaller `MSAAppHost`; emulator control remains exclusively in `MSA Emulator.app`.
+
 ```sh
 ANDROID_SERIAL=emulator-5558 scripts/create-macos-app.sh com.android.vending
 ```
@@ -177,10 +183,14 @@ open "$HOME/Applications/Google Play Store.app"
 ```
 
 `MSA Emulator.app` runs as a separate menu-bar process from any app-specific `.app`. Its
-menu lets you start, restart, and stop the emulator, choose the macOS cameras used for Android's
-front and back cameras, and choose its microphone input. Camera choices are saved per emulator;
-changing one restarts the running emulator so the new device can be attached. Microphone choices
-are also saved per emulator and applied as the macOS default input device because Android Emulator's
+menu lets you start, restart, and stop the emulator, share the Mac's location, choose the macOS
+cameras used for Android's front and back cameras, and choose its microphone input. Location
+sharing is enabled by default and asks for macOS permission on first use. The manager injects an
+initial location after starting the emulator, then keeps it updated only while an open Android app
+declares coarse or fine location access in its manifest. It stops updates while the emulator is
+paused or stopped; resuming does not unconditionally inject a location. Camera choices are saved
+per emulator; changing one restarts the running emulator so the new device can be attached.
+Microphone choices are also saved per emulator and applied as the macOS default input device because Android Emulator's
 CoreAudio backend does not provide per-process device selection. The manager asks for confirmation
 before changing the macOS default input device. Use **Refresh Media Devices** after connecting or
 disconnecting a camera or microphone. Android playback and microphone input use macOS CoreAudio.

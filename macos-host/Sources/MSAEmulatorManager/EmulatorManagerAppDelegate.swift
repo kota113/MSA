@@ -1,4 +1,6 @@
 import AppKit
+import CoreLocation
+import MSAHostCore
 
 @MainActor
 final class EmulatorManagerAppDelegate: NSObject, NSApplicationDelegate {
@@ -31,8 +33,26 @@ final class EmulatorManagerAppDelegate: NSObject, NSApplicationDelegate {
     private var stopTimer: Timer?
     private var idleStartedAt: Date?
     private var isTransitioning = false
+    private var packageAutoInstaller: PackageAutoInstaller?
+    private var clientPackages: [String: String] = [:]
+    private var locationPermissionByPackage: [String: Bool] = [:]
+    private var locationDemandRefreshTask: Task<Void, Never>?
+    private var locationDemandGeneration = 0
+    private var locationInjectionTask: Task<Void, Never>?
+    private var pendingLocation: CLLocation?
+    private var locationMenuItem: NSMenuItem?
+    private var useMacLocation: Bool
+    private var emulatorAcceptsLocation = false
+    private lazy var locationBridge = EmulatorLocationBridge { [weak self] location in
+        self?.enqueueLocation(location)
+    }
 
-    init(arguments: Arguments) { self.arguments = arguments }
+    init(arguments: Arguments) {
+        self.arguments = arguments
+        let key = "location.useMacLocation.\(arguments.emulatorSerial)"
+        let defaults = UserDefaults.standard
+        useMacLocation = defaults.object(forKey: key) == nil || defaults.bool(forKey: key)
+    }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApplication.shared.setActivationPolicy(.accessory)
@@ -41,6 +61,13 @@ final class EmulatorManagerAppDelegate: NSObject, NSApplicationDelegate {
             controller = try makeController()
             registerIPCObservers()
             createStatusItem()
+            packageAutoInstaller = PackageAutoInstaller(arguments: arguments) { [weak self] packageName in
+                guard let self, let controller = self.controller else { return }
+                self.cancelIdleTimers()
+                defer { self.scheduleIdleActionsIfNeeded() }
+                try await Task.detached { try controller.uninstall(packageName: packageName) }.value
+            }
+            packageAutoInstaller?.start()
             startEmulator()
         } catch {
             presentError(error)
@@ -58,6 +85,7 @@ final class EmulatorManagerAppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         guard let controller else { return .terminateNow }
+        stopLocationUpdates()
         isTransitioning = true
         updateMenu(status: "\(arguments.avdName) — Stopping…", actionEnabled: false, running: true)
         do {
@@ -65,8 +93,10 @@ final class EmulatorManagerAppDelegate: NSObject, NSApplicationDelegate {
             return .terminateNow
         } catch {
             isTransitioning = false
-            updateMenu(status: "\(arguments.avdName) — Error", actionEnabled: true,
-                       running: controller.isRunning())
+            let running = controller.isRunning()
+            emulatorAcceptsLocation = running && !controller.isPaused()
+            reconcileLocationUpdates()
+            updateMenu(status: "\(arguments.avdName) — Error", actionEnabled: true, running: running)
             presentError(error)
             return .terminateCancel
         }
@@ -74,6 +104,8 @@ final class EmulatorManagerAppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationWillTerminate(_ notification: Notification) {
         statusTimer?.invalidate()
+        packageAutoInstaller?.stop()
+        stopLocationUpdates()
         cancelIdleTimers()
         DistributedNotificationCenter.default().removeObserver(self)
     }
@@ -90,15 +122,19 @@ final class EmulatorManagerAppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func acquireEmulator(_ notification: Notification) {
         guard let values = clientValues(from: notification),
+              let packageName = notification.userInfo?[EmulatorManagerIPC.packageNameKey] as? String,
+              PackageEventProtocol.isValidPackageName(packageName),
               let requestID = notification.userInfo?[EmulatorManagerIPC.requestIDKey] as? String else { return }
         clients.touch(values.clientID)
+        clientPackages[values.clientID] = packageName
         pendingRequests[requestID] = values.clientID
         cancelIdleTimers()
         guard !isTransitioning else { return }
         if controller?.isPaused() == true {
             resumeEmulator()
         } else if controller?.isRunning() == true {
-            respondToPendingRequests()
+            emulatorAcceptsLocation = true
+            refreshLocationDemand()
         } else {
             startEmulator()
         }
@@ -112,7 +148,9 @@ final class EmulatorManagerAppDelegate: NSObject, NSApplicationDelegate {
     @objc private func releaseEmulator(_ notification: Notification) {
         guard let values = clientValues(from: notification) else { return }
         clients.release(values.clientID)
+        clientPackages.removeValue(forKey: values.clientID)
         pendingRequests = pendingRequests.filter { $0.value != values.clientID }
+        reconcileLocationUpdates()
         scheduleIdleActionsIfNeeded()
     }
 
@@ -201,6 +239,13 @@ final class EmulatorManagerAppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(stop)
 
         menu.addItem(.separator())
+        let location = NSMenuItem(title: "Use Mac Location", action: #selector(toggleMacLocation),
+                                  keyEquivalent: "")
+        location.target = self
+        location.state = useMacLocation ? .on : .off
+        menu.addItem(location)
+
+        menu.addItem(.separator())
         let frontCameraItem = NSMenuItem(title: "Front Camera", action: nil, keyEquivalent: "")
         let frontMenu = NSMenu(title: "Front Camera")
         frontCameraItem.submenu = frontMenu
@@ -232,6 +277,7 @@ final class EmulatorManagerAppDelegate: NSObject, NSApplicationDelegate {
         statusTitleItem = title
         startOrRestartItem = startOrRestart
         stopItem = stop
+        locationMenuItem = location
         frontCameraMenu = frontMenu
         backCameraMenu = backMenu
         microphoneMenu = microphoneSubmenu
@@ -263,6 +309,20 @@ final class EmulatorManagerAppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private var audioInputDefaultsKey: String { "audio.input.\(arguments.emulatorSerial)" }
+
+    private var locationDefaultsKey: String { "location.useMacLocation.\(arguments.emulatorSerial)" }
+
+    @objc private func toggleMacLocation() {
+        useMacLocation.toggle()
+        UserDefaults.standard.set(useMacLocation, forKey: locationDefaultsKey)
+        locationMenuItem?.state = useMacLocation ? .on : .off
+        guard useMacLocation else {
+            stopLocationUpdates()
+            return
+        }
+        if emulatorAcceptsLocation { locationBridge.requestInitialLocation() }
+        reconcileLocationUpdates()
+    }
 
     private func validAudioInputUID(_ uid: String?) -> String? {
         guard let uid, audioInputDevices.contains(where: { $0.uid == uid }) else { return nil }
@@ -378,6 +438,7 @@ final class EmulatorManagerAppDelegate: NSObject, NSApplicationDelegate {
             controller = replacement
             guard wasRunning else { return }
             cancelIdleTimers()
+            suspendLocationForEmulator()
             isTransitioning = true
             updateMenu(status: "\(arguments.avdName) — Applying devices…",
                        actionEnabled: false, running: true)
@@ -387,20 +448,102 @@ final class EmulatorManagerAppDelegate: NSObject, NSApplicationDelegate {
                         try previousController.stop()
                         try replacement.ensureRunning()
                     }.value
+                    emulatorAcceptsLocation = true
+                    if useMacLocation { locationBridge.requestInitialLocation() }
+                    refreshLocationDemand()
                     isTransitioning = false
                     updateMenu(status: "\(arguments.avdName) — Running", actionEnabled: true, running: true)
-                    respondToPendingRequests()
                     scheduleIdleActionsIfNeeded()
                 } catch {
                     isTransitioning = false
+                    let running = replacement.isRunning()
+                    emulatorAcceptsLocation = running && !replacement.isPaused()
+                    reconcileLocationUpdates()
                     updateMenu(status: "\(arguments.avdName) — Error", actionEnabled: true,
-                               running: replacement.isRunning())
+                               running: running)
                     respondToPendingRequests(error: error)
                     presentError(error)
                 }
             }
         } catch {
             presentError(error)
+        }
+    }
+
+    private func refreshLocationDemand() {
+        guard emulatorAcceptsLocation, let controller else {
+            reconcileLocationUpdates()
+            return
+        }
+        guard locationDemandRefreshTask == nil else { return }
+        let packages = Set(clientPackages.values)
+        let generation = locationDemandGeneration
+        locationDemandRefreshTask = Task { [weak self] in
+            let permissions = await Task.detached { () -> [String: Bool] in
+                var result: [String: Bool] = [:]
+                for packageName in packages {
+                    result[packageName] = (try? controller.packageDeclaresLocationPermission(packageName)) ?? false
+                }
+                return result
+            }.value
+            guard let self, generation == self.locationDemandGeneration else { return }
+            for (packageName, hasPermission) in permissions {
+                self.locationPermissionByPackage[packageName] = hasPermission
+            }
+            self.locationDemandRefreshTask = nil
+            self.reconcileLocationUpdates()
+            if Set(self.clientPackages.values) != packages {
+                self.refreshLocationDemand()
+            } else {
+                self.respondToPendingRequests()
+            }
+        }
+    }
+
+    private func reconcileLocationUpdates() {
+        let hasLocationSession = clientPackages.values.contains {
+            locationPermissionByPackage[$0] == true
+        }
+        locationBridge.setContinuousUpdatesEnabled(
+            useMacLocation && emulatorAcceptsLocation && hasLocationSession
+        )
+    }
+
+    private func stopLocationUpdates() {
+        pendingLocation = nil
+        locationBridge.stop()
+    }
+
+    private func suspendLocationForEmulator() {
+        emulatorAcceptsLocation = false
+        locationDemandGeneration += 1
+        locationDemandRefreshTask?.cancel()
+        locationDemandRefreshTask = nil
+        stopLocationUpdates()
+    }
+
+    private func enqueueLocation(_ location: CLLocation) {
+        guard useMacLocation, emulatorAcceptsLocation, let controller else { return }
+        pendingLocation = location
+        guard locationInjectionTask == nil else { return }
+        locationInjectionTask = Task { [weak self] in
+            guard let self else { return }
+            while let location = self.pendingLocation {
+                self.pendingLocation = nil
+                let coordinate = location.coordinate
+                do {
+                    try await Task.detached {
+                        try controller.setLocation(
+                            latitude: coordinate.latitude, longitude: coordinate.longitude,
+                            altitude: location.altitude
+                        )
+                    }.value
+                } catch {
+                    NSLog("Failed to inject Mac location into Android Emulator: %@",
+                          error.localizedDescription)
+                }
+            }
+            self.locationInjectionTask = nil
         }
     }
 
@@ -412,9 +555,11 @@ final class EmulatorManagerAppDelegate: NSObject, NSApplicationDelegate {
         Task {
             do {
                 try await Task.detached { try controller.ensureRunning() }.value
+                emulatorAcceptsLocation = true
+                if useMacLocation { locationBridge.requestInitialLocation() }
+                refreshLocationDemand()
                 isTransitioning = false
                 updateMenu(status: "\(arguments.avdName) — Running", actionEnabled: true, running: true)
-                respondToPendingRequests()
                 scheduleIdleActionsIfNeeded()
             } catch {
                 isTransitioning = false
@@ -435,6 +580,7 @@ final class EmulatorManagerAppDelegate: NSObject, NSApplicationDelegate {
 
     private func pauseEmulator() {
         guard !isTransitioning, clients.isEmpty, let controller else { return }
+        suspendLocationForEmulator()
         isTransitioning = true
         updateMenu(status: "\(arguments.avdName) — Pausing…", actionEnabled: false, running: true)
         Task {
@@ -447,6 +593,8 @@ final class EmulatorManagerAppDelegate: NSObject, NSApplicationDelegate {
                     resumeEmulator()
                 }
             } catch {
+                emulatorAcceptsLocation = true
+                reconcileLocationUpdates()
                 isTransitioning = false
                 updateMenu(status: "\(arguments.avdName) — Error", actionEnabled: true, running: true)
                 presentError(error)
@@ -461,14 +609,18 @@ final class EmulatorManagerAppDelegate: NSObject, NSApplicationDelegate {
         Task {
             do {
                 try await Task.detached { try controller.resume() }.value
+                emulatorAcceptsLocation = true
+                refreshLocationDemand()
                 isTransitioning = false
                 updateMenu(status: "\(arguments.avdName) — Running", actionEnabled: true, running: true)
-                respondToPendingRequests()
                 scheduleIdleActionsIfNeeded()
             } catch {
+                let running = controller.isRunning()
+                emulatorAcceptsLocation = running && !controller.isPaused()
+                reconcileLocationUpdates()
                 isTransitioning = false
                 updateMenu(status: "\(arguments.avdName) — Error", actionEnabled: true,
-                           running: controller.isRunning())
+                           running: running)
                 respondToPendingRequests(error: error)
                 presentError(error)
             }
@@ -500,18 +652,23 @@ final class EmulatorManagerAppDelegate: NSObject, NSApplicationDelegate {
             return
         }
         cancelIdleTimers()
+        suspendLocationForEmulator()
         isTransitioning = true
         updateMenu(status: "\(arguments.avdName) — Restarting…", actionEnabled: false, running: true)
         Task {
             do {
                 try await Task.detached { try controller.restart() }.value
+                emulatorAcceptsLocation = true
+                if useMacLocation { locationBridge.requestInitialLocation() }
+                refreshLocationDemand()
                 isTransitioning = false
                 updateMenu(status: "\(arguments.avdName) — Running", actionEnabled: true, running: true)
-                respondToPendingRequests()
                 scheduleIdleActionsIfNeeded()
             } catch {
                 isTransitioning = false
                 let running = controller.isRunning()
+                emulatorAcceptsLocation = running && !controller.isPaused()
+                reconcileLocationUpdates()
                 updateMenu(status: "\(arguments.avdName) — Error", actionEnabled: true, running: running)
                 respondToPendingRequests(error: error)
                 presentError(error)
@@ -522,6 +679,7 @@ final class EmulatorManagerAppDelegate: NSObject, NSApplicationDelegate {
     @objc private func stopEmulator() {
         guard !isTransitioning, let controller else { return }
         cancelIdleTimers()
+        suspendLocationForEmulator()
         isTransitioning = true
         updateMenu(status: "\(arguments.avdName) — Saving snapshot and stopping…",
                    actionEnabled: false, running: true)
@@ -534,6 +692,8 @@ final class EmulatorManagerAppDelegate: NSObject, NSApplicationDelegate {
             } catch {
                 isTransitioning = false
                 let running = controller.isRunning()
+                emulatorAcceptsLocation = running && !controller.isPaused()
+                reconcileLocationUpdates()
                 updateMenu(status: "\(arguments.avdName) — Error", actionEnabled: true, running: running)
                 presentError(error)
             }
@@ -543,10 +703,13 @@ final class EmulatorManagerAppDelegate: NSObject, NSApplicationDelegate {
     @objc private func checkEmulatorState() {
         guard !isTransitioning, let controller else { return }
         let hadClients = !clients.isEmpty
-        clients.removeExpired()
+        let expiredClientIDs = clients.removeExpired()
+        for clientID in expiredClientIDs { clientPackages.removeValue(forKey: clientID) }
+        if !expiredClientIDs.isEmpty { reconcileLocationUpdates() }
         if hadClients && clients.isEmpty { scheduleIdleActionsIfNeeded() }
         Task {
             let state = await Task.detached { (controller.isRunning(), controller.isPaused()) }.value
+            if !state.0 || state.1 { suspendLocationForEmulator() }
             if state.1 {
                 updateIdleMenu(paused: true)
             } else if state.0, clients.isEmpty, idleStartedAt != nil {

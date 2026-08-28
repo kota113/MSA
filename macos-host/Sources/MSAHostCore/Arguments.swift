@@ -1,24 +1,24 @@
 import Foundation
 
-struct Arguments: Sendable {
-    var isEmulatorManager = false
-    var packageName = "com.android.settings"
-    var displayName: String?
-    var host = "127.0.0.1"
-    var port: UInt16 = 27183
-    var width = 1080
-    var height = 1920
-    var density = 420
-    var bitrate = 8_000_000
-    var emulatorSerial = "emulator-5556"
-    var avdName = "msa-api36"
-    var writableSystem = true
-    var sdkRoot = FileManager.default.homeDirectoryForCurrentUser
+public struct Arguments: Sendable {
+    public var isEmulatorManager = false
+    public var packageName = "com.android.settings"
+    public var displayName: String?
+    public var host = "127.0.0.1"
+    public var port: UInt16 = 27183
+    public var width = 1080
+    public var height = 1920
+    public var density = 420
+    public var bitrate = 8_000_000
+    public var emulatorSerial = "emulator-5556"
+    public var avdName = "msa-api36"
+    public var writableSystem = true
+    public var sdkRoot = FileManager.default.homeDirectoryForCurrentUser
         .appendingPathComponent("Library/Android/sdk").path
 
-    var windowTitle: String { displayName ?? packageName }
+    public var windowTitle: String { displayName ?? packageName }
 
-    static func parse(_ values: [String]) -> Arguments {
+    public static func parse(_ values: [String]) -> Arguments {
         parse(
             values,
             bundlePackageName: Bundle.main.object(forInfoDictionaryKey: "MSAPackageName") as? String,
@@ -32,7 +32,7 @@ struct Arguments: Sendable {
         )
     }
 
-    static func parse(
+    public static func parse(
         _ values: [String],
         bundlePackageName: String?,
         bundleDisplayName: String?,

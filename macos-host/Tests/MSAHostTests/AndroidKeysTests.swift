@@ -1,5 +1,5 @@
 import XCTest
-@testable import MSAHost
+@testable import MSAAppHost
 
 final class AndroidKeysTests: XCTestCase {
     func testUSLetterKeysMapToAndroidLetters() {

@@ -1,17 +1,5 @@
 import Foundation
 
-enum EmulatorManagerIPC {
-    static let acquire = Notification.Name("dev.msa.emulator.acquire")
-    static let heartbeat = Notification.Name("dev.msa.emulator.heartbeat")
-    static let release = Notification.Name("dev.msa.emulator.release")
-    static let response = Notification.Name("dev.msa.emulator.response")
-
-    static let serialKey = "serial"
-    static let clientIDKey = "clientID"
-    static let requestIDKey = "requestID"
-    static let errorKey = "error"
-}
-
 struct EmulatorClientRegistry {
     let leaseDuration: TimeInterval
     private(set) var clients: [String: Date] = [:]
@@ -28,7 +16,10 @@ struct EmulatorClientRegistry {
         clients.removeValue(forKey: clientID)
     }
 
-    mutating func removeExpired(at date: Date = Date()) {
+    @discardableResult
+    mutating func removeExpired(at date: Date = Date()) -> Set<String> {
+        let previousIDs = Set(clients.keys)
         clients = clients.filter { date.timeIntervalSince($0.value) < leaseDuration }
+        return previousIDs.subtracting(clients.keys)
     }
 }

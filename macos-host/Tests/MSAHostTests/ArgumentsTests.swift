@@ -1,5 +1,5 @@
 import XCTest
-@testable import MSAHost
+@testable import MSAHostCore
 
 final class ArgumentsTests: XCTestCase {
     func testBundleMetadataSelectsAndroidApp() {

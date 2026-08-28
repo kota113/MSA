@@ -27,3 +27,16 @@ Android constants (`DOWN=0`, `UP=1`, `MOVE=2`, mouse press `11`, mouse release `
 
 The transport intentionally has no authentication yet. Keep it behind `adb forward` — it is
 not designed to be exposed to a network.
+
+## Package events
+
+TCP port `27184` is reserved for package installation events and is also exposed only through
+`adb forward`. Events remain in device-protected storage until macOS acknowledges successful
+bundle generation. Each connection contains one request and one response:
+
+    LIST_PENDING
+    PACKAGE com.example.app
+    END
+
+    ACK com.example.app
+    OK

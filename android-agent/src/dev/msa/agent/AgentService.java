@@ -12,6 +12,7 @@ public final class AgentService extends Service {
     private static final String TAG = "MsaAgent";
     private static final String CHANNEL = "msa-agent";
     private AgentServer server;
+    private PackageEventServer packageEventServer;
 
     @Override
     public void onCreate() {
@@ -28,12 +29,16 @@ public final class AgentService extends Service {
         startForeground(1, notification);
         server = new AgentServer(this, 27183);
         server.start();
-        Log.i(TAG, "Agent started on TCP 27183");
+        PackageEventStore packageEventStore = new PackageEventStore(this);
+        packageEventServer = new PackageEventServer(packageEventStore, 27184);
+        packageEventServer.start();
+        Log.i(TAG, "Agent started on TCP 27183 and 27184");
     }
 
     @Override
     public void onDestroy() {
         if (server != null) server.close();
+        if (packageEventServer != null) packageEventServer.close();
         super.onDestroy();
     }
 

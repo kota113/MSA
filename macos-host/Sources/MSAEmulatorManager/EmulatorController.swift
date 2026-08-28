@@ -1,4 +1,51 @@
 import Foundation
+import MSAHostCore
+
+enum AndroidManifestPermissions {
+    private static let locationPermissions = [
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.ACCESS_COARSE_LOCATION",
+    ]
+
+    static func hasLocationPermission(in packageDump: String) -> Bool {
+        var isReadingRequestedPermissions = false
+        for rawLine in packageDump.split(whereSeparator: \.isNewline) {
+            let line = rawLine.trimmingCharacters(in: .whitespaces)
+            if line == "requested permissions:" {
+                isReadingRequestedPermissions = true
+                continue
+            }
+            guard isReadingRequestedPermissions else { continue }
+            if line.hasSuffix(":") { return false }
+            if locationPermissions.contains(line) { return true }
+        }
+        return false
+    }
+}
+
+enum EmulatorLocationCommand {
+    enum LocationError: LocalizedError {
+        case invalidCoordinate
+
+        var errorDescription: String? { "Core Location returned an invalid coordinate." }
+    }
+
+    static func arguments(serial: String, latitude: Double, longitude: Double,
+                          altitude: Double) throws -> [String] {
+        guard latitude.isFinite, longitude.isFinite,
+              (-90...90).contains(latitude), (-180...180).contains(longitude) else {
+            throw LocationError.invalidCoordinate
+        }
+        let safeAltitude = altitude.isFinite ? max(0, altitude) : 0
+        let locale = Locale(identifier: "en_US_POSIX")
+        return [
+            "-s", serial, "emu", "geo", "fix",
+            String(format: "%.8f", locale: locale, longitude),
+            String(format: "%.8f", locale: locale, latitude),
+            String(format: "%.3f", locale: locale, safeAltitude),
+        ]
+    }
+}
 
 struct EmulatorCamera: Equatable, Sendable {
     let id: String
@@ -131,8 +178,8 @@ final class EmulatorController: @unchecked Sendable {
         process.standardError = pipe
         do {
             try process.run()
-            process.waitUntilExit()
             let output = String(decoding: pipe.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+            process.waitUntilExit()
             return process.terminationStatus == 0 ? EmulatorCamera.parseList(output) : []
         } catch {
             return []
@@ -161,6 +208,42 @@ final class EmulatorController: @unchecked Sendable {
             try retryWithColdBoot()
         } catch ControllerError.startTimedOut {
             try retryWithColdBoot()
+        }
+    }
+
+    func uninstall(packageName: String) throws {
+        guard PackageEventProtocol.isValidPackageName(packageName) else {
+            throw ControllerError.commandFailed("adb uninstall", "Invalid package name")
+        }
+        if isPaused() { try resume() } else { try ensureRunning() }
+        let result = run(configuration.adbURL, ["-s", configuration.serial, "uninstall", packageName])
+        guard result.status == 0,
+              result.output.trimmingCharacters(in: .whitespacesAndNewlines) == "Success" else {
+            throw ControllerError.commandFailed("adb uninstall \(packageName)", result.output)
+        }
+    }
+
+    func packageDeclaresLocationPermission(_ packageName: String) throws -> Bool {
+        guard PackageEventProtocol.isValidPackageName(packageName) else {
+            throw ControllerError.commandFailed("adb dumpsys package", "Invalid package name")
+        }
+        let result = run(configuration.adbURL, [
+            "-s", configuration.serial, "shell", "dumpsys", "package", packageName,
+        ])
+        guard result.status == 0 else {
+            throw ControllerError.commandFailed("adb dumpsys package \(packageName)", result.output)
+        }
+        return AndroidManifestPermissions.hasLocationPermission(in: result.output)
+    }
+
+    func setLocation(latitude: Double, longitude: Double, altitude: Double) throws {
+        let arguments = try EmulatorLocationCommand.arguments(
+            serial: configuration.serial, latitude: latitude,
+            longitude: longitude, altitude: altitude
+        )
+        let result = run(configuration.adbURL, arguments)
+        guard result.status == 0 else {
+            throw ControllerError.commandFailed("adb emu geo fix", result.output)
         }
     }
 
@@ -272,12 +355,14 @@ final class EmulatorController: @unchecked Sendable {
     }
 
     private func configureForward() throws {
-        _ = run(configuration.adbURL, ["-s", configuration.serial,
-                                      "forward", "--remove", "tcp:27183"])
-        let result = run(configuration.adbURL, ["-s", configuration.serial,
-                                                "forward", "tcp:27183", "tcp:27183"])
-        guard result.status == 0 else {
-            throw ControllerError.commandFailed("adb forward", result.output)
+        for port in [27183, 27184] {
+            _ = run(configuration.adbURL, ["-s", configuration.serial,
+                                           "forward", "--remove", "tcp:\(port)"])
+            let result = run(configuration.adbURL, ["-s", configuration.serial,
+                                                    "forward", "tcp:\(port)", "tcp:\(port)"])
+            guard result.status == 0 else {
+                throw ControllerError.commandFailed("adb forward tcp:\(port)", result.output)
+            }
         }
     }
 
@@ -290,8 +375,8 @@ final class EmulatorController: @unchecked Sendable {
         process.standardError = pipe
         do {
             try process.run()
-            process.waitUntilExit()
             let data = pipe.fileHandleForReading.readDataToEndOfFile()
+            process.waitUntilExit()
             return (process.terminationStatus, String(decoding: data, as: UTF8.self))
         } catch {
             return (-1, error.localizedDescription)

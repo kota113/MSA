@@ -68,6 +68,7 @@ case "$ACTION" in
 esac
 
 adb_cmd forward tcp:27183 tcp:27183
+adb_cmd forward tcp:27184 tcp:27184
 echo "Automotive projection holder:"
 adb_cmd shell cmd role get-role-holders --user 0 "$ROLE"
 echo "Automotive projection config:"
