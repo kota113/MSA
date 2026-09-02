@@ -142,6 +142,17 @@ final class AndroidView: NSView {
         if let code = AndroidKeys[event.keyCode] { connection.sendLine("KEY 1 \(code)") }
     }
 
+    override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        guard event.modifierFlags.intersection(.deviceIndependentFlagsMask).contains(.command),
+              let transitions = AndroidShortcuts.command(event.keyCode) else {
+            return super.performKeyEquivalent(with: event)
+        }
+        for transition in transitions {
+            connection.sendLine("KEY \(transition.action) \(transition.androidKeyCode)")
+        }
+        return true
+    }
+
     override func flagsChanged(with event: NSEvent) {
         guard let transition = modifierKeyState.toggle(macKeyCode: event.keyCode) else {
             super.flagsChanged(with: event)
@@ -160,6 +171,18 @@ final class AndroidView: NSView {
 struct AndroidKeyTransition: Equatable {
     let action: Int
     let androidKeyCode: Int
+}
+
+enum AndroidShortcuts {
+    static func command(_ macKeyCode: UInt16) -> [AndroidKeyTransition]? {
+        guard macKeyCode == 9 else { return nil } // V
+        return [
+            AndroidKeyTransition(action: 0, androidKeyCode: 113), // Ctrl Left
+            AndroidKeyTransition(action: 0, androidKeyCode: 50),  // V
+            AndroidKeyTransition(action: 1, androidKeyCode: 50),
+            AndroidKeyTransition(action: 1, androidKeyCode: 113),
+        ]
+    }
 }
 
 struct ModifierKeyState {

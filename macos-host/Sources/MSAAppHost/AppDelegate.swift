@@ -22,6 +22,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private let emulatorClientID = UUID().uuidString
     private var window: NSWindow?
     private var connection: SocketConnection?
+    private var clipboardBridge: ClipboardBridge?
     private var androidView: AndroidView?
     private var managerResponses: [String: String] = [:]
     private var heartbeatTimer: Timer?
@@ -94,6 +95,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
     func windowDidResignKey(_ notification: Notification) { androidView?.releaseModifierKeys() }
     func windowWillClose(_ notification: Notification) {
+        clipboardBridge?.stop()
+        clipboardBridge = nil
         connection?.close()
         connection = nil
         androidView = nil
@@ -101,6 +104,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         releaseEmulator()
     }
     func applicationWillTerminate(_ notification: Notification) {
+        clipboardBridge?.stop()
         connection?.close()
         releaseEmulator()
         DistributedNotificationCenter.default().removeObserver(self)
@@ -230,6 +234,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         NSApplication.shared.activate(ignoringOtherApps: true)
         self.window = window
         androidView = view
+        let clipboardBridge = ClipboardBridge(connection: connection)
+        self.clipboardBridge = clipboardBridge
+        clipboardBridge.start()
         readVideo(from: connection, into: display)
     }
 
@@ -246,8 +253,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
                     let length = Int(header.uint32BE(at: 10))
                     guard length <= 16 * 1024 * 1024 else { throw SocketConnection.SocketError.closed }
                     let payload = try connection.readExactly(length)
-                    await display.consume(payload: payload, ptsMicroseconds: pts,
-                                          isKeyFrame: kind == 2 && (flags & 1) != 0)
+                    if kind == 1 || kind == 2 {
+                        await display.consume(payload: payload, ptsMicroseconds: pts,
+                                              isKeyFrame: kind == 2 && (flags & 1) != 0)
+                    } else if kind == 3 {
+                        await MainActor.run {
+                            guard self?.connection === connection else { return }
+                            self?.clipboardBridge?.receive(flags: flags, payload: payload)
+                        }
+                    }
                 }
             } catch {
                 await MainActor.run {

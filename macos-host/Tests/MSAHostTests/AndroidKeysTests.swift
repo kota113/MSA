@@ -52,4 +52,14 @@ final class AndroidKeysTests: XCTestCase {
         ])
         XCTAssertTrue(state.releaseAll().isEmpty)
     }
+
+    func testCommandVPastesWithAndroidControlV() {
+        XCTAssertEqual(AndroidShortcuts.command(9), [
+            AndroidKeyTransition(action: 0, androidKeyCode: 113),
+            AndroidKeyTransition(action: 0, androidKeyCode: 50),
+            AndroidKeyTransition(action: 1, androidKeyCode: 50),
+            AndroidKeyTransition(action: 1, androidKeyCode: 113),
+        ])
+        XCTAssertNil(AndroidShortcuts.command(8))
+    }
 }

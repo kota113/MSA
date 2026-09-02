@@ -34,8 +34,9 @@ final class AppSession implements AutoCloseable {
     private static final String TAG = "MsaAgent";
     private final Context context;
     private final SessionConfig config;
-    private final OutputStream output;
+    private final PacketWriter output;
     private H264Encoder encoder;
+    private ClipboardBridge clipboard;
     private VirtualDevice device;
     private VirtualDisplay display;
     private VirtualTouchscreen touchscreen;
@@ -48,8 +49,8 @@ final class AppSession implements AutoCloseable {
     AppSession(Context context, SessionConfig config, OutputStream output) throws Exception {
         this.context = context;
         this.config = config;
-        this.output = output;
-        this.encoder = new H264Encoder(config, output);
+        this.output = new PacketWriter(output);
+        this.encoder = new H264Encoder(config, this.output);
         this.currentWidth = config.width;
         this.currentHeight = config.height;
         this.currentDensityDpi = config.densityDpi;
@@ -98,6 +99,7 @@ final class AppSession implements AutoCloseable {
                 .setVendorId(0x18d1).setProductId(0x4ee9).build());
 
         encoder.start(true);
+        clipboard = new ClipboardBridge(context.createDeviceContext(device.getDeviceId()), output);
         launch(config.packageName, displayId);
     }
 
@@ -128,6 +130,7 @@ final class AppSession implements AutoCloseable {
             case "RESIZE" -> resize(Integer.parseInt(p[1]), Integer.parseInt(p[2]),
                     Integer.parseInt(p[3]));
             case "LAUNCH" -> launch(p[1], display.getDisplay().getDisplayId());
+            case "CLIPBOARD" -> clipboard.handleCommand(line);
             default -> throw new IllegalArgumentException("Unknown input command: " + p[0]);
         }
     }
@@ -195,6 +198,7 @@ final class AppSession implements AutoCloseable {
 
     @Override
     public void close() {
+        if (clipboard != null) clipboard.close();
         if (keyboard != null) keyboard.close();
         if (mouse != null) mouse.close();
         if (touchscreen != null) touchscreen.close();

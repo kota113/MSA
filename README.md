@@ -32,6 +32,7 @@ Android Emulator (unmodified AOSP framework) │
 - Injects macOS input into VirtualTouchscreen / VirtualMouse / VirtualKeyboard
 - Streams H.264 via MediaCodec and decodes/paints it in AppKit
 - Routes Android playback and microphone input through macOS CoreAudio
+- Shares text and images bidirectionally through the macOS and Android clipboards
 - Maps selectable macOS cameras to Android's front and back cameras
 - Resizes the VirtualDisplay, density, encoder, and touchscreen to match the `NSWindow`'s
   aspect ratio and size live
@@ -42,7 +43,7 @@ Android Emulator (unmodified AOSP framework) │
 
 ## Known limitations
 
-- Not yet implemented: clipboard sharing, system notifications, IME composition, and
+- Not yet implemented: system notifications, IME composition, and
   DRM-protected video.
 - The wire protocol has no authentication and is only safe behind `adb forward`'s localhost
   connection — see [Security notes](#security-notes).
@@ -201,6 +202,8 @@ shuts down the emulator and saves its Quick Boot state while the menu-bar app re
 Each app-specific `.app` has an **Android** menu in the macOS menu bar. Use it to send **Back**
 (also available as **Command-[**), **Volume Up**, **Volume Down**, or **Mute** to that Android app.
 These volume controls change Android's volume, not the macOS system volume.
+With the Android window active, **Command-V** sends Android's **Control-V** shortcut, so text or
+images synchronized from the Mac clipboard can be pasted into the focused Android field.
 The menu shows the idle, paused, snapshot-saving, and stopped states. If a saved-state boot
 fails, the manager automatically retries once with a cold boot.
 

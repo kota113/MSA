@@ -5,22 +5,18 @@ import android.media.MediaCodecInfo;
 import android.media.MediaFormat;
 import android.view.Surface;
 
-import java.io.DataOutputStream;
 import java.io.IOException;
-import java.io.OutputStream;
 import java.nio.ByteBuffer;
 
 final class H264Encoder implements AutoCloseable {
-    private static final byte PACKET_CONFIG = 1;
-    private static final byte PACKET_FRAME = 2;
     private final MediaCodec codec;
     private final Surface inputSurface;
-    private final DataOutputStream output;
+    private final PacketWriter output;
     private volatile boolean running;
     private Thread drainThread;
 
-    H264Encoder(SessionConfig config, OutputStream outputStream) throws IOException {
-        output = new DataOutputStream(outputStream);
+    H264Encoder(SessionConfig config, PacketWriter output) throws IOException {
+        this.output = output;
         codec = MediaCodec.createEncoderByType(MediaFormat.MIMETYPE_VIDEO_AVC);
         MediaFormat format = MediaFormat.createVideoFormat(
                 MediaFormat.MIMETYPE_VIDEO_AVC, config.width, config.height);
@@ -38,8 +34,7 @@ final class H264Encoder implements AutoCloseable {
 
     void start(boolean sendStreamHeader) throws IOException {
         if (sendStreamHeader) {
-            output.write("MSA01\n".getBytes(java.nio.charset.StandardCharsets.US_ASCII));
-            output.flush();
+            output.sendStreamHeader();
         }
         codec.start();
         running = true;
@@ -67,7 +62,7 @@ final class H264Encoder implements AutoCloseable {
                         byte[] bytes = new byte[info.size];
                         buffer.get(bytes);
                         byte type = (info.flags & MediaCodec.BUFFER_FLAG_CODEC_CONFIG) != 0
-                                ? PACKET_CONFIG : PACKET_FRAME;
+                                ? PacketWriter.PACKET_CONFIG : PacketWriter.PACKET_FRAME;
                         send(type, info.flags, info.presentationTimeUs, bytes);
                     }
                     codec.releaseOutputBuffer(index, false);
@@ -84,16 +79,11 @@ final class H264Encoder implements AutoCloseable {
         ByteBuffer copy = value.duplicate();
         byte[] bytes = new byte[copy.remaining()];
         copy.get(bytes);
-        send(PACKET_CONFIG, MediaCodec.BUFFER_FLAG_CODEC_CONFIG, 0, bytes);
+        send(PacketWriter.PACKET_CONFIG, MediaCodec.BUFFER_FLAG_CODEC_CONFIG, 0, bytes);
     }
 
-    private synchronized void send(byte type, int flags, long ptsUs, byte[] bytes) throws IOException {
-        output.writeByte(type);
-        output.writeByte(flags & 0xff);
-        output.writeLong(ptsUs);
-        output.writeInt(bytes.length);
-        output.write(bytes);
-        output.flush();
+    private void send(byte type, int flags, long ptsUs, byte[] bytes) throws IOException {
+        output.send(type, flags, ptsUs, bytes);
     }
 
     @Override
