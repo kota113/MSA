@@ -35,6 +35,63 @@ final class EmulatorConfigurationTests: XCTestCase {
         ])
     }
 
+    func testStorageIncreaseLaunchArgumentsForceRequestedPartitionSize() throws {
+        let configuration = try EmulatorConfiguration(
+            sdkRoot: "/tmp/android-sdk", serial: "emulator-5558",
+            avdName: "msa-gms-api36", writableSystem: false
+        )
+
+        let arguments = configuration.launchArguments(coldBoot: true, partitionSizeMB: 16 * 1024)
+
+        XCTAssertEqual(arguments.suffix(3), ["-partition-size", "16384", "-no-snapshot-load"])
+    }
+
+    func testAVDStorageConfigurationPersistsLargerSize() throws {
+        let homeURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let avdURL = homeURL.appendingPathComponent(".android/avd/msa-api36.avd", isDirectory: true)
+        try FileManager.default.createDirectory(at: avdURL, withIntermediateDirectories: true)
+        let configURL = avdURL.appendingPathComponent("config.ini")
+        try "hw.ramSize=4096\ndisk.dataPartition.size=8589934592\n"
+            .write(to: configURL, atomically: true, encoding: .utf8)
+        defer { try? FileManager.default.removeItem(at: homeURL) }
+        let storage = AVDStorageConfiguration(avdName: "msa-api36", homeURL: homeURL)
+
+        XCTAssertEqual(try storage.currentSizeBytes(), 8 * 1024 * 1024 * 1024)
+        try storage.increase(to: 16 * 1024 * 1024 * 1024)
+
+        XCTAssertEqual(try storage.currentSizeBytes(), 16 * 1024 * 1024 * 1024)
+        XCTAssertTrue(try String(contentsOf: configURL, encoding: .utf8)
+            .contains("hw.ramSize=4096"))
+    }
+
+    func testAVDStorageConfigurationReadsUnitSuffixedSize() throws {
+        let homeURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let avdURL = homeURL.appendingPathComponent(".android/avd/msa-api36.avd", isDirectory: true)
+        try FileManager.default.createDirectory(at: avdURL, withIntermediateDirectories: true)
+        try "disk.dataPartition.size=6G\n"
+            .write(to: avdURL.appendingPathComponent("config.ini"), atomically: true, encoding: .utf8)
+        defer { try? FileManager.default.removeItem(at: homeURL) }
+        let storage = AVDStorageConfiguration(avdName: "msa-api36", homeURL: homeURL)
+
+        XCTAssertEqual(try storage.currentSizeBytes(), 6 * 1024 * 1024 * 1024)
+    }
+
+    func testAVDStorageConfigurationRejectsShrinkAndEqualSize() throws {
+        let homeURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let avdURL = homeURL.appendingPathComponent(".android/avd/msa-api36.avd", isDirectory: true)
+        try FileManager.default.createDirectory(at: avdURL, withIntermediateDirectories: true)
+        try "disk.dataPartition.size=17179869184\n"
+            .write(to: avdURL.appendingPathComponent("config.ini"), atomically: true, encoding: .utf8)
+        defer { try? FileManager.default.removeItem(at: homeURL) }
+        let storage = AVDStorageConfiguration(avdName: "msa-api36", homeURL: homeURL)
+
+        XCTAssertThrowsError(try storage.increase(to: 16 * 1024 * 1024 * 1024))
+        XCTAssertThrowsError(try storage.increase(to: 8 * 1024 * 1024 * 1024))
+    }
+
     func testWritableSystemArgumentIsAddedForAOSPImage() throws {
         let configuration = try EmulatorConfiguration(
             sdkRoot: "/tmp/android-sdk",

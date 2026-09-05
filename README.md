@@ -195,6 +195,11 @@ Microphone choices are also saved per emulator and applied as the macOS default 
 CoreAudio backend does not provide per-process device selection. The manager asks for confirmation
 before changing the macOS default input device. Use **Refresh Media Devices** after connecting or
 disconnecting a camera or microphone. Android playback and microphone input use macOS CoreAudio.
+Use **Increase Storage…** to enter a larger maximum data-partition size in GiB. This is a capacity
+limit: host disk space is allocated dynamically as Android uses it, rather than reserving the full
+amount immediately. The manager warns that the change cannot be reversed without erasing the AVD,
+then updates its persistent configuration and restarts it with a cold boot. Values equal to or
+smaller than the current size are rejected.
 The manager is the only process that controls the emulator lifecycle. After the last Android app window closes, the manager pauses the VM
 after 30 seconds to reduce idle CPU usage. After five minutes it
 shuts down the emulator and saves its Quick Boot state while the menu-bar app remains available.

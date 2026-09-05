@@ -110,14 +110,101 @@ struct EmulatorConfiguration: Sendable {
 
     var adbURL: URL { URL(fileURLWithPath: sdkRoot).appendingPathComponent("platform-tools/adb") }
     var emulatorURL: URL { URL(fileURLWithPath: sdkRoot).appendingPathComponent("emulator/emulator") }
-    func launchArguments(coldBoot: Bool) -> [String] {
+    func launchArguments(coldBoot: Bool, partitionSizeMB: UInt64? = nil) -> [String] {
         var result = ["-avd", avdName, "-port", String(port)]
         if writableSystem { result.append("-writable-system") }
         result += ["-no-window", "-no-boot-anim", "-gpu", "host",
                    "-audio", "coreaudio", "-allow-host-audio", "-camera-front", frontCamera,
                    "-camera-back", backCamera]
+        if let partitionSizeMB {
+            result += ["-partition-size", String(partitionSizeMB)]
+        }
         if coldBoot { result.append("-no-snapshot-load") }
         return result
+    }
+}
+
+struct AVDStorageConfiguration {
+    enum StorageError: LocalizedError {
+        case configMissing(String)
+        case sizeMissing
+        case invalidSize(String)
+        case notAnIncrease(current: UInt64, requested: UInt64)
+
+        var errorDescription: String? {
+            switch self {
+            case .configMissing(let path):
+                return "AVD configuration was not found: \(path)"
+            case .sizeMissing:
+                return "The AVD configuration does not contain disk.dataPartition.size."
+            case .invalidSize(let value):
+                return "Invalid AVD data partition size: \(value)"
+            case .notAnIncrease(let current, let requested):
+                return "Storage can only be increased (current: \(current) bytes, requested: \(requested) bytes)."
+            }
+        }
+    }
+
+    let configURL: URL
+
+    init(avdName: String, homeURL: URL = FileManager.default.homeDirectoryForCurrentUser) {
+        configURL = homeURL.appendingPathComponent(".android/avd/\(avdName).avd/config.ini")
+    }
+
+    func currentSizeBytes() throws -> UInt64 {
+        let contents = try readContents()
+        guard let line = contents.split(whereSeparator: \.isNewline).first(where: {
+            $0.hasPrefix("disk.dataPartition.size=")
+        }) else {
+            throw StorageError.sizeMissing
+        }
+        let value = line.dropFirst("disk.dataPartition.size=".count)
+            .trimmingCharacters(in: .whitespaces)
+        guard let bytes = Self.parseSize(String(value)), bytes > 0 else {
+            throw StorageError.invalidSize(value)
+        }
+        return bytes
+    }
+
+    private static func parseSize(_ value: String) -> UInt64? {
+        let normalized = value.uppercased()
+            .filter { !$0.isWhitespace }
+        if let bytes = UInt64(normalized) { return bytes }
+
+        let suffixes: [(String, UInt64)] = [
+            ("KB", 1024), ("K", 1024),
+            ("MB", 1024 * 1024), ("M", 1024 * 1024),
+            ("GB", 1024 * 1024 * 1024), ("G", 1024 * 1024 * 1024),
+            ("TB", 1024 * 1024 * 1024 * 1024), ("T", 1024 * 1024 * 1024 * 1024),
+        ]
+        for (suffix, multiplier) in suffixes where normalized.hasSuffix(suffix) {
+            let number = normalized.dropLast(suffix.count)
+            guard let amount = UInt64(number) else { return nil }
+            let (bytes, overflow) = amount.multipliedReportingOverflow(by: multiplier)
+            return overflow ? nil : bytes
+        }
+        return nil
+    }
+
+    func increase(to requestedBytes: UInt64) throws {
+        let currentBytes = try currentSizeBytes()
+        guard requestedBytes > currentBytes else {
+            throw StorageError.notAnIncrease(current: currentBytes, requested: requestedBytes)
+        }
+        var contents = try readContents()
+        guard let range = contents.range(of: #"(?m)^disk\.dataPartition\.size=.*$"#,
+                                         options: .regularExpression) else {
+            throw StorageError.sizeMissing
+        }
+        contents.replaceSubrange(range, with: "disk.dataPartition.size=\(requestedBytes)")
+        try contents.write(to: configURL, atomically: true, encoding: .utf8)
+    }
+
+    private func readContents() throws -> String {
+        guard FileManager.default.fileExists(atPath: configURL.path) else {
+            throw StorageError.configMissing(configURL.path)
+        }
+        return try String(contentsOf: configURL, encoding: .utf8)
     }
 }
 
@@ -211,6 +298,18 @@ final class EmulatorController: @unchecked Sendable {
         }
     }
 
+    func currentStorageSizeBytes() throws -> UInt64 {
+        try AVDStorageConfiguration(avdName: configuration.avdName).currentSizeBytes()
+    }
+
+    func increaseStorage(to requestedBytes: UInt64) throws {
+        let storage = AVDStorageConfiguration(avdName: configuration.avdName)
+        _ = try storage.currentSizeBytes()
+        try stop()
+        try storage.increase(to: requestedBytes)
+        try ensureRunning(coldBoot: true, partitionSizeMB: requestedBytes / (1024 * 1024))
+    }
+
     func uninstall(packageName: String) throws {
         guard PackageEventProtocol.isValidPackageName(packageName) else {
             throw ControllerError.commandFailed("adb uninstall", "Invalid package name")
@@ -252,8 +351,10 @@ final class EmulatorController: @unchecked Sendable {
         try ensureRunning(coldBoot: true)
     }
 
-    private func ensureRunning(coldBoot: Bool) throws {
-        if !isPresent() { try launchEmulator(coldBoot: coldBoot) }
+    private func ensureRunning(coldBoot: Bool, partitionSizeMB: UInt64? = nil) throws {
+        if !isPresent() {
+            try launchEmulator(coldBoot: coldBoot, partitionSizeMB: partitionSizeMB)
+        }
 
         let deadline = Date().addingTimeInterval(120)
         while Date() < deadline {
@@ -333,7 +434,7 @@ final class EmulatorController: @unchecked Sendable {
         try ensureRunning()
     }
 
-    private func launchEmulator(coldBoot: Bool) throws {
+    private func launchEmulator(coldBoot: Bool, partitionSizeMB: UInt64? = nil) throws {
         guard FileManager.default.isExecutableFile(atPath: configuration.emulatorURL.path) else {
             throw ControllerError.executableMissing(configuration.emulatorURL.path)
         }
@@ -342,7 +443,8 @@ final class EmulatorController: @unchecked Sendable {
             try EmulatorAudioInput.selectDevice(uid: audioInputUID)
         }
         process.executableURL = configuration.emulatorURL
-        process.arguments = configuration.launchArguments(coldBoot: coldBoot)
+        process.arguments = configuration.launchArguments(coldBoot: coldBoot,
+                                                            partitionSizeMB: partitionSizeMB)
         process.standardOutput = FileHandle.nullDevice
         process.standardError = FileHandle.nullDevice
         try process.run()

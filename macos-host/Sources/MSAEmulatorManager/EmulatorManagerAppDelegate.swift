@@ -20,6 +20,7 @@ final class EmulatorManagerAppDelegate: NSObject, NSApplicationDelegate {
     private var statusTitleItem: NSMenuItem?
     private var startOrRestartItem: NSMenuItem?
     private var stopItem: NSMenuItem?
+    private var increaseStorageItem: NSMenuItem?
     private var frontCameraMenu: NSMenu?
     private var backCameraMenu: NSMenu?
     private var microphoneMenu: NSMenu?
@@ -238,6 +239,13 @@ final class EmulatorManagerAppDelegate: NSObject, NSApplicationDelegate {
         stop.isEnabled = false
         menu.addItem(stop)
 
+        let increaseStorage = NSMenuItem(title: "Increase Storage…",
+                                         action: #selector(promptToIncreaseStorage),
+                                         keyEquivalent: "")
+        increaseStorage.target = self
+        increaseStorage.isEnabled = false
+        menu.addItem(increaseStorage)
+
         menu.addItem(.separator())
         let location = NSMenuItem(title: "Use Mac Location", action: #selector(toggleMacLocation),
                                   keyEquivalent: "")
@@ -277,6 +285,7 @@ final class EmulatorManagerAppDelegate: NSObject, NSApplicationDelegate {
         statusTitleItem = title
         startOrRestartItem = startOrRestart
         stopItem = stop
+        increaseStorageItem = increaseStorage
         locationMenuItem = location
         frontCameraMenu = frontMenu
         backCameraMenu = backMenu
@@ -576,6 +585,109 @@ final class EmulatorManagerAppDelegate: NSObject, NSApplicationDelegate {
         startOrRestartItem?.title = running ? "Restart Emulator" : "Start Emulator"
         startOrRestartItem?.isEnabled = actionEnabled
         stopItem?.isEnabled = actionEnabled && running
+        increaseStorageItem?.isEnabled = actionEnabled
+    }
+
+    @objc private func promptToIncreaseStorage() {
+        guard !isTransitioning, let controller else { return }
+        do {
+            let bytesPerGiB: UInt64 = 1024 * 1024 * 1024
+            let currentBytes = try controller.currentStorageSizeBytes()
+            let currentGiB = Double(currentBytes) / Double(bytesPerGiB)
+            let field = NSTextField(string: String(Int(currentGiB.rounded(.up)) + 1))
+            field.placeholderString = "16"
+            field.alignment = .right
+            field.setAccessibilityLabel("New maximum storage size in GiB")
+
+            let inputLabel = NSTextField(labelWithString: "New maximum:")
+            let unitLabel = NSTextField(labelWithString: "GiB")
+            let inputRow = NSStackView(views: [inputLabel, field, unitLabel])
+            inputRow.spacing = 8
+            inputRow.alignment = .centerY
+            field.widthAnchor.constraint(equalToConstant: 120).isActive = true
+
+            let currentLabel = NSTextField(labelWithString:
+                String(format: "Current maximum: %.1f GiB", currentGiB))
+            let allocationLabel = NSTextField(labelWithString:
+                "This is a maximum capacity. Host disk space is allocated dynamically as Android uses it.")
+            allocationLabel.textColor = .secondaryLabelColor
+            allocationLabel.maximumNumberOfLines = 0
+            allocationLabel.lineBreakMode = .byWordWrapping
+            allocationLabel.preferredMaxLayoutWidth = 340
+
+            let topSpacer = NSView()
+            topSpacer.heightAnchor.constraint(equalToConstant: 8).isActive = true
+            let accessoryStack = NSStackView(views: [topSpacer, currentLabel, inputRow, allocationLabel])
+            accessoryStack.orientation = .vertical
+            accessoryStack.alignment = .leading
+            accessoryStack.spacing = 8
+            accessoryStack.setCustomSpacing(14, after: inputRow)
+            accessoryStack.frame = NSRect(x: 0, y: 0, width: 340, height: 98)
+            allocationLabel.widthAnchor.constraint(equalToConstant: 340).isActive = true
+
+            let alert = NSAlert()
+            alert.alertStyle = .warning
+            alert.messageText = "Increase Android Storage"
+            alert.accessoryView = accessoryStack
+            alert.addButton(withTitle: "Continue")
+            alert.addButton(withTitle: "Cancel")
+            guard alert.runModal() == .alertFirstButtonReturn else { return }
+
+            let input = field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard let requestedGiB = UInt64(input), requestedGiB > 0 else {
+                throw AVDStorageConfiguration.StorageError.invalidSize(input)
+            }
+            let (requestedBytes, overflow) = requestedGiB.multipliedReportingOverflow(by: bytesPerGiB)
+            guard !overflow else { throw AVDStorageConfiguration.StorageError.invalidSize(input) }
+            guard requestedBytes > currentBytes else {
+                throw AVDStorageConfiguration.StorageError.notAnIncrease(
+                    current: currentBytes, requested: requestedBytes
+                )
+            }
+
+            let confirmation = NSAlert()
+            confirmation.alertStyle = .warning
+            confirmation.messageText = "Confirm Storage Increase"
+            confirmation.informativeText = String(
+                format: "Increase the maximum capacity to %llu GiB?\n\nThis change cannot be undone. The emulator will restart with a cold boot.",
+                requestedGiB
+            )
+            confirmation.addButton(withTitle: "Increase and Restart")
+            confirmation.addButton(withTitle: "Cancel")
+            guard confirmation.runModal() == .alertFirstButtonReturn else { return }
+
+            increaseStorage(to: requestedBytes)
+        } catch {
+            presentError(error)
+        }
+    }
+
+    private func increaseStorage(to requestedBytes: UInt64) {
+        guard !isTransitioning, let controller else { return }
+        cancelIdleTimers()
+        suspendLocationForEmulator()
+        isTransitioning = true
+        updateMenu(status: "\(arguments.avdName) — Increasing storage…",
+                   actionEnabled: false, running: true)
+        Task {
+            do {
+                try await Task.detached { try controller.increaseStorage(to: requestedBytes) }.value
+                emulatorAcceptsLocation = true
+                if useMacLocation { locationBridge.requestInitialLocation() }
+                refreshLocationDemand()
+                isTransitioning = false
+                updateMenu(status: "\(arguments.avdName) — Running", actionEnabled: true, running: true)
+                scheduleIdleActionsIfNeeded()
+            } catch {
+                isTransitioning = false
+                let running = controller.isRunning()
+                emulatorAcceptsLocation = running && !controller.isPaused()
+                reconcileLocationUpdates()
+                updateMenu(status: "\(arguments.avdName) — Error", actionEnabled: true, running: running)
+                respondToPendingRequests(error: error)
+                presentError(error)
+            }
+        }
     }
 
     private func pauseEmulator() {
